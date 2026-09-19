@@ -1,0 +1,4 @@
+{% extends 'base.html' %}
+{% block title %}Reopen the form{% endblock %}
+{% block heading %}Reopen the form before saving{% endblock %}
+{% block content %}<p>This form expired or belongs to another database. Nothing was saved by this request.</p><p>Use the navigation to reopen the form in <strong>{{ dataset_filename }}</strong>, or <a href="{{ database_chooser_url }}">choose a database</a>.</p>{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_macros.html" import checkbox_group, error_summary, first_error, money_missing, wt_field, wt_checkbox, money, badge, currency_datalist, values_update_url %}
+{% block title %}Relationship minimum · {{ institution.name }}{% endblock %}
+{% block heading %}Relationship minimum{% endblock %}
+{% block as_of %}<span class="as-of">As of {{ as_of_date|display_date }}</span>{% endblock %}
+{% block content %}
+<p class="meta">{{ institution.name }}</p>
+<p>This is your record of a commercial institution minimum. It does not confirm the
+   institution's contractual calculation, legal ownership, deposit protection, or
+   counterparty exposure.</p>
+
+{% if snapshot %}
+<section class="card" aria-labelledby="relationship-result-heading">
+  <h2 id="relationship-result-heading">Current relationship balance</h2>
+  <p class="meta">This is a separate {{ snapshot.threshold_currency_code }} relationship view.
+     An account can be current in the portfolio reporting view while the FX used here is stale or missing.</p>
+  {% if snapshot.status == "cannot_determine" %}
+  <p>{{ badge("missing", "Cannot determine") }} At least one eligible account has no
+     complete value in {{ snapshot.threshold_currency_code }}.</p>
+  <p>Known eligible subtotal:
+     {{ money({"amount": snapshot.known_eligible_value_amount, "currency": snapshot.threshold_currency_code}) }}
+     <span class="meta">· incomplete accounts are listed below, never counted as zero</span></p>
+  {% else %}
+  <p class="headline">{{ money({"amount": snapshot.eligible_value_amount, "currency": snapshot.threshold_currency_code}) }}</p>
+  <dl class="kv">
+    <dt>Minimum</dt>
+    <dd>{{ money({"amount": snapshot.threshold_amount, "currency": snapshot.threshold_currency_code}) }}</dd>
+    <dt>Buffer</dt>
+    <dd>{{ money({"amount": snapshot.buffer_amount, "currency": snapshot.threshold_currency_code}) }}</dd>
+    {% if snapshot.warning_buffer_amount is not none %}
+    <dt>Preferred extra buffer</dt>
+    <dd>{{ money({"amount": snapshot.warning_buffer_amount, "currency": snapshot.threshold_currency_code}) }}</dd>
+    {% endif %}
+  </dl>
+  {% if snapshot.status == "stale" %}<p>{{ badge("stale", "Stale") }} One or more eligible values are stale.</p>{% endif %}
+  {% if snapshot.state == "below_minimum" %}<p>{{ badge("warning", "Below minimum") }} The current eligible value is below the amount you entered.</p>
+  {% elif snapshot.state == "within_warning_buffer" %}<p>{{ badge("warning", "Inside preferred buffer") }} The minimum is met, but the extra buffer is not.</p>
+  {% else %}<p class="meta">The current eligible value meets the amount you entered.</p>{% endif %}
+  {% endif %}
+
+  <h3>Eligible accounts</h3>
+  <ul>
+    {% for row in snapshot.account_rows %}
+    <li>{{ row.account_name }}{% if row.reference %} <span class="meta">· {{ row.reference }}</span>{% endif %} —
+      {% if row.amount is not none %}{{ money({"amount": row.amount, "currency": row.currency}) }}
+      {% else %}{{ money_missing("incomplete value") }}{% endif %}
+      {% if row.status == "stale" %}{{ badge("stale", "Stale") }}{% endif %}
+      {% if row.latest_value_date %}<span class="meta">· latest source {{ row.latest_value_date|display_date }}</span>{% endif %}
+      {% if row.value_dependencies %}
+      <ul class="meta">
+        {% for dependency in row.value_dependencies %}
+        <li>
+          <strong>{{ "Missing" if dependency.status == "missing" else "Stale" }} {{
+            "price" if dependency.source == "price" else
+            "statement value" if dependency.source == "statement" else
+            "relationship FX"
+          }}</strong> —
+          {% if dependency.source == "fx" %}
+            {{ dependency.base_currency }} → {{ dependency.quote_currency }}
+          {% else %}
+            {{ dependency.instrument_name }}
+          {% endif %}
+          {% if dependency.effective_date %} · source {{ dependency.effective_date|display_date }}{% endif %}
+          <a href="{{ values_update_url(
+              dependency.source,
+              instrument_id=dependency.instrument_id,
+              registration_id=dependency.registration_id,
+              base_currency=dependency.base_currency,
+              quote_currency=dependency.quote_currency) }}">Update →</a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="meta">Uses full tracked account values. Portfolio share and present access are separate planning overlays.</p>
+</section>
+{% endif %}
+
+{% set first_err = first_error(form, ["name", "threshold_amount", "threshold_currency_code", "warning_buffer_amount", "eligible_account_ids", "is_active", "notes"]) %}
+{{ error_summary(form) }}
+
+<form class="stack" method="post" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.name, required=true, autofocus=(first_err == "name")) }}
+  {{ wt_field(form.threshold_amount, required=true, input_class="money-input",
+              autofocus=(first_err == "threshold_amount"),
+              hint="The commercial minimum you entered; it is not a legal or protection limit.") }}
+  {{ wt_field(form.threshold_currency_code, required=true, currency_suggest=true,
+              autofocus=(first_err == "threshold_currency_code"),
+              hint="Eligible account values are converted to this currency through the normal FX path.") }}
+  {{ wt_field(form.warning_buffer_amount, input_class="money-input",
+              autofocus=(first_err == "warning_buffer_amount"),
+              hint="Optional extra amount above the minimum, in the same currency.") }}
+
+  {{ checkbox_group(form.eligible_account_ids, "Eligible accounts",
+                    legend_suffix="(required while active)",
+                    hint="Choose only accounts the institution counts toward this commercial minimum. The app does not infer the contract.",
+                    empty_note=none if accounts else "No active accounts at this institution.",
+                    autofocus=(first_err == "eligible_account_ids"),
+                    item_id_prefix="eligible-account-") }}
+
+  {{ wt_checkbox(form.is_active) }}
+  {{ wt_field(form.notes, autofocus=(first_err == "notes"),
+              hint="Optional reminder about what the institution counts or where the figure came from.") }}
+  <p class="form-actions">
+    {{ form.save_rule(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('accounts.index', as_of=as_of_date.isoformat()) }}">Back to accounts</a>
+  </p>
+</form>
+{{ currency_datalist() }}
+{% endblock %}

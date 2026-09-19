@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Monte Carlo comparison unavailable{% endblock %}
+{% block heading %}Review the projection before comparing{% endblock %}
+{% block content %}
+<section class="card"><p role="alert">{{ error }}</p><p><a href="{{ url_for('retirement.index', review=review_token) }}">Return to the reviewed retirement assumptions</a></p><p class="hint">No simulation results have been calculated or saved.</p></section>
+{% endblock %}

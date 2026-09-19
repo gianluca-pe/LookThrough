@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% from "_macros.html" import as_of_form, money, money_missing, badge %}
+{% block title %}{{ account.name }}{% endblock %}
+{% block heading %}{{ account.name }}{% endblock %}
+{% block as_of %}<span class="as-of">Cash as of {{ as_of_date|display_date }}</span>{% endblock %}
+{% block content %}
+<p class="meta">{{ account.institution_name }} · {{ account.account_type|capitalize }}{% if account.is_multicurrency %} · Multicurrency{% endif %}{% if account.reference %} · Ref {{ account.reference }}{% endif %}</p>
+{{ as_of_form("accounts.detail", as_of_date, label="Show cash as of", url_params={"account_id": account.id}) }}
+
+{% if account.cash_tracking_mode == "separate_cash" and not account.cash_settlement_account_name %}
+<p><a class="btn btn-primary" href="{{ url_for('accounts.new_cash_confirmation', account_id=account.id) }}">Set current cash balance</a></p>
+{% endif %}
+{% if account.cash_settlement_account_name %}
+<p>Activity cash settles in
+  <a href="{{ url_for('accounts.detail', account_id=account.cash_settlement_account_id) }}">{{ account.cash_settlement_account_name }}</a>;
+  this custody account does not add a separate cash balance.</p>
+{% endif %}
+
+{% set vs = account.value_summary %}
+<section class="card" aria-labelledby="value-heading">
+  <h2 id="value-heading">Value in this portfolio</h2>
+  <dl class="kv">
+    <dt>Portfolio share</dt>
+    <dd>{{ account.portfolio_share_percent|trim_decimal }}%
+      <span class="meta">· your planning input; the app does not determine legal ownership</span></dd>
+    <dt>Present access</dt>
+    <dd>{{ account.present_access_percent|trim_decimal }}% of the included share
+      {%- if account.earliest_access_date %}
+      <span class="meta"> · locked until {{ account.earliest_access_date|display_date }}</span>
+      {%- endif %}</dd>
+    {% if account.access_note %}
+    <dt>Access note</dt>
+    <dd>{{ account.access_note }}</dd>
+    {% endif %}
+    <dt>Gross tracked value</dt>
+    <dd>{% if vs.gross_reporting_amount is not none %}
+      {{ money({"amount": vs.gross_reporting_amount, "currency": reporting_currency}) }}
+      {%- else %}{{ money_missing() }}{% endif %}</dd>
+    <dt>Included in portfolio</dt>
+    <dd>{% if vs.included_reporting_amount is not none %}
+      {{ money({"amount": vs.included_reporting_amount, "currency": reporting_currency}) }}
+      {%- else %}{{ money_missing() }}{% endif %}</dd>
+    <dt>Accessible now</dt>
+    <dd>{% if vs.accessible_reporting_amount is not none %}
+      {{ money({"amount": vs.accessible_reporting_amount, "currency": reporting_currency}) }}
+      {%- else %}{{ money_missing() }}{% endif %}</dd>
+    {% if vs.term_liquidity_reporting_amount and vs.term_liquidity_reporting_amount != 0 %}
+    <dt>Term liquidity</dt>
+    <dd>{{ money({"amount": vs.term_liquidity_reporting_amount, "currency": reporting_currency}) }}
+      <span class="meta">· fixed deposits not yet at maturity</span></dd>
+    {% endif %}
+    {% if vs.excluded_by_share_reporting_amount and vs.excluded_by_share_reporting_amount != 0 %}
+    <dt>Excluded by share</dt>
+    <dd>{{ money({"amount": vs.excluded_by_share_reporting_amount, "currency": reporting_currency}) }}</dd>
+    {% endif %}
+    {% if vs.restricted_reporting_amount and vs.restricted_reporting_amount != 0 %}
+    <dt>Restricted by access setting</dt>
+    <dd>{{ money({"amount": vs.restricted_reporting_amount, "currency": reporting_currency}) }}</dd>
+    {% endif %}
+  </dl>
+  {% if vs.status == "missing" %}
+  <p class="meta">No reporting value yet — update prices, statement values, or FX from
+    <a href="{{ url_for('positions.show_values') }}">Update values</a>.</p>
+  {% elif vs.status == "empty" %}
+  <p class="meta">Nothing tracked in this account as of this date.</p>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="relationship-heading">
+  <h2 id="relationship-heading">Institution relationship</h2>
+  {% if relationship_snapshot %}
+    {% if relationship_snapshot.eligible_value_amount is not none %}
+    <p>{{ money({"amount": relationship_snapshot.eligible_value_amount, "currency": relationship_snapshot.threshold_currency_code}) }} eligible at {{ account.institution_name }}
+       · minimum {{ money({"amount": relationship_snapshot.threshold_amount, "currency": relationship_snapshot.threshold_currency_code}) }}
+       {%- if relationship_snapshot.buffer_amount is not none %}
+       · buffer {{ money({"amount": relationship_snapshot.buffer_amount, "currency": relationship_snapshot.threshold_currency_code}) }}{% endif %}</p>
+    {% if relationship_snapshot.status == "stale" %}
+    <p>{{ badge("stale", "Stale") }} One or more eligible values are stale.</p>{% endif %}
+    {% if relationship_snapshot.state == "below_minimum" %}
+    <p>{{ badge("warning", "Below minimum") }} The eligible value is below the amount you entered.</p>
+    {% elif relationship_snapshot.state == "within_warning_buffer" %}
+    <p>{{ badge("warning", "Inside preferred buffer") }} The minimum is met, but the extra buffer is not.</p>
+    {% endif %}
+    {% else %}
+    <p>{{ badge("missing", "Cannot determine") }} <span class="meta">The current relationship balance cannot be determined from all eligible accounts.</span></p>
+    {% endif %}
+    <p class="meta">Uses full tracked account values; portfolio share and present access do not reduce them.</p>
+    <p><a href="{{ url_for('relationships.edit', institution_id=relationship_snapshot.institution_id, as_of=as_of_date.isoformat()) }}">Review relationship minimum</a></p>
+  {% else %}
+  <p class="meta">No commercial relationship minimum is recorded for this institution.</p>
+  <p><a href="{{ url_for('relationships.edit', institution_id=account.institution_id, as_of=as_of_date.isoformat()) }}">Add relationship minimum</a></p>
+  {% endif %}
+</section>
+
+{% for cash in account.cash %}
+<section class="card" aria-labelledby="cash-{{ cash.currency_code }}-heading">
+  <div class="card-head">
+    <h2 id="cash-{{ cash.currency_code }}-heading">{{ cash.currency_code }} cash</h2>
+    <span class="meta">
+      {%- if cash.status == "confirmed" %}Confirmed on {{ cash.checkpoint.effective_date|display_date }}
+      {%- elif cash.status == "calculated" %}Calculated from activity
+      {%- elif cash.status == "settled_elsewhere" %}Settles in {{ account.cash_settlement_account_name }}
+      {%- else %}Included in aggregate{% endif -%}
+    </span>
+  </div>
+
+  {% if cash.status == "settled_elsewhere" %}
+  <p>No separate cash balance here — activity cash settles in
+     {{ account.cash_settlement_account_name }}, where it is confirmed and carried forward.</p>
+  {% elif cash.status == "included_in_aggregate" %}
+  <p>Cash is included in this account's aggregate value. No separate cash balance is added.</p>
+  {% else %}
+  <p class="headline">
+    {{ money({"amount": cash.amount, "currency": cash.currency_code}) }}
+    {% if cash.amount is not none and cash.amount < 0 %}{{ badge("warning", "Negative cash") }}{% endif %}
+  </p>
+
+  {% if cash.checkpoint %}
+  {# Traceability: every number shows where it came from. #}
+  <dl class="kv">
+    <dt>Latest confirmation</dt>
+    <dd>{{ money({"amount": cash.checkpoint.confirmed_balance_amount, "currency": cash.currency_code}) }} ·
+        <span class="meta">{{ cash.checkpoint.effective_date|display_date }} · end-of-day</span></dd>
+    <dt>Prior calculated balance</dt>
+    <dd>{{ money({"amount": cash.checkpoint.prior_calculated_balance_amount, "currency": cash.currency_code}) }}</dd>
+    <dt>Reconciliation correction</dt>
+    <dd>{{ money({"amount": cash.checkpoint.correction_amount, "currency": cash.currency_code}) }}</dd>
+    {% if cash.checkpoint.source_note %}
+    <dt>Source note</dt>
+    <dd>{{ cash.checkpoint.source_note }}</dd>
+    {% endif %}
+    <dt>Later activity effects</dt>
+    <dd>{{ money({"amount": cash.later_cash_effect_amount, "currency": cash.currency_code}) }}</dd>
+  </dl>
+  <p class="meta">The correction is reconciliation only — not a deposit, withdrawal, income, expense, gain, or loss.</p>
+  {% else %}
+  <p class="meta">No confirmation yet. Cash is calculated from all posted activity effects.</p>
+  {% endif %}
+
+  {% if cash.effects %}
+  <h3>Activity effects{% if cash.checkpoint %} after the confirmation{% endif %}</h3>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th scope="col">Date</th><th scope="col">Activity</th><th scope="col" class="num">Cash effect</th></tr></thead>
+      <tbody>
+        {% for effect in cash.effects %}
+        <tr>
+          <td class="meta">{{ effect.effective_date|display_date }}</td>
+          <td>{{ effect.transaction_type|replace('_', ' ')|capitalize }}</td>
+          <td class="num">{{ money({"amount": effect.amount, "currency": cash.currency_code}) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% for warning in cash.warnings %}<p class="banner-warning">{{ warning }}</p>{% endfor %}
+  {% endif %}
+</section>
+{% endfor %}
+
+<p class="form-actions">
+  <a class="btn btn-primary" href="{{ url_for('positions.new', account=account.id) }}">Add holding</a>
+  <a class="btn" href="{{ url_for('positions.new', account=account.id, kind='fixed_deposit') }}">Add fixed deposit</a>
+  <a class="btn" href="{{ url_for('accounts.edit', account_id=account.id) }}">Edit account</a>
+  <a class="btn btn-plain" href="{{ url_for('activity.history', account_id=account.id) }}">Activity history for this account</a>
+  {% if not archive_blockers %}<a class="btn btn-plain" href="{{ url_for('accounts.archive', account_id=account.id) }}">Archive empty account</a>{% endif %}
+</p>
+{% endblock %}

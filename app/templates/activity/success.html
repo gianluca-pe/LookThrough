@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money %}
+{% block title %}{{ "Buy" if receipt.activity_type == "buy" else "Sell" }} recorded{% endblock %}
+{% block heading %}{{ "Buy" if receipt.activity_type == "buy" else "Sell" }} recorded{% endblock %}
+{% block content %}
+{# Success panel after redirect: plain-language receipt
+   plus next actions; the h1 above already names the outcome. Focus lands here
+   via tabindex + enhance.js. Undo links to the GET reversal confirmation —
+   never a direct POST. #}
+<div class="success-panel" tabindex="-1">
+  <p>
+    {{ "Bought" if receipt.activity_type == "buy" else "Sold" }}
+    <strong>{{ receipt.quantity|trim_decimal|money_amount(none) }} units</strong> of
+    <strong>{{ receipt.instrument_name }}</strong> in {{ receipt.account_name }} on
+    {{ receipt.effective_date|display_date }} for
+    {{ money({"amount": receipt.gross_amount, "currency": receipt.settlement_currency}) }}{% if receipt.fee_amount %} plus {{ money({"amount": receipt.fee_amount, "currency": receipt.settlement_currency}) }} fee{% endif %}.
+    Cash effect: {{ money({"amount": receipt.cash_effect, "currency": receipt.settlement_currency}) }}{% if receipt.cash_account_id != receipt.account_id %} — settles in <strong>{{ receipt.cash_account_name }}</strong>{% endif %}.
+  </p>
+  <div class="next-actions">
+    {% if replacement %}
+    <a class="btn btn-primary" href="{{ url_for('activity.replacement', transaction_id=receipt.transaction_id) }}">Use sale proceeds to buy another instrument</a>
+    {% endif %}
+    <a class="btn" href="{{ url_for('activity.new', type=receipt.activity_type) }}">Add another</a>
+    <a class="btn btn-plain" href="{{ url_for('positions.holdings') }}">View Holdings</a>
+    <a class="btn btn-plain" href="{{ url_for('activity.reverse', transaction_id=receipt.transaction_id) }}">Undo</a>
+  </div>
+</div>
+{% endblock %}

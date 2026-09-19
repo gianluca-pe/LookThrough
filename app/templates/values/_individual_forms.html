@@ -1,0 +1,141 @@
+{% from "_macros.html" import empty_state, error_summary, wt_checkbox, wt_field %}
+{# The three individual value forms (price / statement / FX), shared by the
+   setup pathway and — inside the "Individual updates" disclosure — the
+   routine maintenance page. Included by values/index.html, which sets
+   price_err / stmt_err / fx_err via first_error. #}
+<section class="card" aria-labelledby="prices-heading">
+  <h2 id="prices-heading">Prices</h2>
+  {% if value_target_context.price %}
+  <p class="flash flash-info" role="status">
+    Updating <strong>{{ value_target_context.price.instrument_name }}</strong>
+    in {{ value_target_context.price.currency }}.
+    {% if value_target_context.price.account_names %}
+    One saved price is reused for its position{% if value_target_context.price.account_names|length != 1 %}s{% endif %}
+    in {{ value_target_context.price.account_names|join(", ") }}.
+    {% endif %}
+  </p>
+  {% endif %}
+  <p class="meta">For positions tracked by quantity. The currency must match the
+     instrument's valuation currency.</p>
+  {% if price_form.instrument_id.choices %}
+  {{ error_summary(price_form, id_prefix="price-") }}
+  <form class="stack" method="post" action="{{ value_action_urls.price }}" novalidate>
+    {{ price_form.hidden_tag() }}
+    {{ wt_field(price_form.instrument_id, required=true, id_prefix="price-", typeahead=true,
+                autofocus=(price_err == "instrument_id")) }}
+    {{ wt_field(price_form.effective_date, required=true, id_prefix="price-",
+                autofocus=(price_err == "effective_date")) }}
+    {{ wt_field(price_form.price_amount, required=true, input_class="money-input", id_prefix="price-",
+                autofocus=(price_err == "price_amount"),
+                hint="Price of one unit, up to 6 decimal places.") }}
+    {{ wt_field(price_form.currency_code, required=true, id_prefix="price-", currency_suggest=true,
+                autofocus=(price_err == "currency_code"),
+                hint="Three-letter code, e.g. EUR.") }}
+    {% if price_form.confirm_same_day_correction.errors or price_form.confirm_same_day_correction.data %}
+    {{ wt_checkbox(price_form.confirm_same_day_correction, id_prefix="price-",
+                   autofocus=(price_err == "confirm_same_day_correction")) }}
+    <p class="meta">The existing row keeps the same date. Its previous price is retained in the source note.</p>
+    {% endif %}
+    <div class="form-actions">{{ price_form.save_price(class_="btn btn-primary") }}</div>
+  </form>
+  {% else %}
+  {{ empty_state(body="No current quantity-tracked investments need manual prices. Statement-valued positions and fixed deposits use their dated statement values instead.", standalone=false) }}
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="statements-heading">
+  <h2 id="statements-heading">Statement values</h2>
+  {% if value_target_context.statement %}
+  <p class="flash flash-info" role="status">
+    Updating <strong>{{ value_target_context.statement.instrument_name }}</strong>
+    in {{ value_target_context.statement.account_name }}
+    ({{ value_target_context.statement.currency }}).
+  </p>
+  {% endif %}
+  {% if statement_form.registration_id.choices %}
+  <p class="meta">For statement-valued positions. This replaces nothing and invents no
+     units — it is simply the newest dated value for the position.</p>
+  {{ error_summary(statement_form, id_prefix="statement-") }}
+  <form class="stack" method="post" action="{{ value_action_urls.statement }}" novalidate>
+    {{ statement_form.hidden_tag() }}
+    {{ wt_field(statement_form.registration_id, required=true, id_prefix="statement-", typeahead=true,
+                autofocus=(stmt_err == "registration_id")) }}
+    {{ wt_field(statement_form.effective_date, required=true, id_prefix="statement-",
+                autofocus=(stmt_err == "effective_date"),
+                hint="The statement's date.") }}
+    {{ wt_field(statement_form.native_value_amount, required=true, input_class="money-input", id_prefix="statement-",
+                autofocus=(stmt_err == "native_value_amount"),
+                hint="The total value shown on the statement.") }}
+    {{ wt_field(statement_form.currency_code, required=true, id_prefix="statement-", currency_suggest=true,
+                autofocus=(stmt_err == "currency_code"),
+                hint="Must match the instrument's valuation currency.") }}
+    <div class="form-actions">{{ statement_form.save_statement_value(class_="btn btn-primary") }}</div>
+  </form>
+  {% else %}
+  {% call empty_state(standalone=false) %}<p>No statement-valued positions yet. If an account only gives you one
+     lump-sum value per statement, add it on the
+     <a href="{{ url_for('positions.show_positions') }}">Positions step</a> with statement tracking.</p>{% endcall %}
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="fx-heading">
+  <h2 id="fx-heading">FX rates</h2>
+  <p><a href="{{ url_for('maintenance.settings', _anchor='fx-settings') }}">Update reference FX rates in Settings</a> · <a href="{{ url_for('fx_settings.manual') }}">Enter or correct a reference set manually</a></p>
+  <p class="meta">Individual pairs below apply only to dates before your first saved reference set.</p>
+  {% if value_target_context.fx %}
+  <p class="flash flash-info" role="status">
+    Updating <strong>{{ value_target_context.fx.base_currency }} →
+    {{ value_target_context.fx.quote_currency }}</strong>:
+    1 {{ value_target_context.fx.base_currency }} equals the rate entered in
+    {{ value_target_context.fx.quote_currency }}.
+  </p>
+  {% endif %}
+  <p class="meta">Direction matters: <strong>1 BASE = RATE QUOTE</strong>. For example,
+     1 USD = 0.92 EUR has base USD, quote EUR, rate 0.92. The app derives the inverse
+     itself and discloses any pivot path it uses.</p>
+  {{ error_summary(fx_form, id_prefix="fx-") }}
+  <form class="stack" method="post" action="{{ value_action_urls.fx }}" novalidate>
+    {{ fx_form.hidden_tag() }}
+    {{ wt_field(fx_form.base_currency_code, required=true, id_prefix="fx-", currency_suggest=true,
+                autofocus=(fx_err == "base_currency_code"),
+                hint="The “1” currency, e.g. USD.") }}
+    {{ wt_field(fx_form.quote_currency_code, required=true, id_prefix="fx-", currency_suggest=true,
+                autofocus=(fx_err == "quote_currency_code"),
+                hint="The currency the rate is expressed in, e.g. EUR.") }}
+    {{ wt_field(fx_form.effective_date, required=true, id_prefix="fx-",
+                autofocus=(fx_err == "effective_date")) }}
+    {{ wt_field(fx_form.quote_per_base_amount, required=true, input_class="money-input", id_prefix="fx-",
+                autofocus=(fx_err == "quote_per_base_amount"),
+                hint="The RATE in 1 BASE = RATE QUOTE, up to 6 decimal places.") }}
+    {% if fx_correction %}
+    <div class="flash flash-warning" role="status">
+      <strong>An FX source already exists for this pair and date.</strong>
+      <ul>
+        {% for source in fx_correction.existing_sources %}
+        <li>Existing: 1 {{ source.base_currency_code }} =
+          {{ source.quote_per_base_amount|trim_decimal }}
+          {{ source.quote_currency_code }}</li>
+        {% endfor %}
+        <li>Replacement: 1 {{ fx_correction.proposed_base_currency }} =
+          {{ fx_correction.proposed_quote_per_base|trim_decimal }}
+          {{ fx_correction.proposed_quote_currency }}</li>
+      </ul>
+      Inverse rows for this date use the reciprocal rounded to 6 decimal places. Each prior
+      value is retained in its source note.
+    </div>
+    {{ wt_checkbox(fx_form.confirm_same_day_correction, id_prefix="fx-",
+                   autofocus=(fx_err == "confirm_same_day_correction")) }}
+    {% endif %}
+    {% if fx_change_warning and fx_change_warning.requires_acknowledgement %}
+    <div class="flash flash-warning" role="status">
+      Previous comparable rate: 1 {{ fx_form.base_currency_code.data }} =
+      {{ fx_change_warning.previous_rate|trim_decimal }} {{ fx_form.quote_currency_code.data }}
+      on {{ fx_change_warning.previous_date|display_date }}. The entered rate differs by
+      {{ fx_change_warning.change_percent|money_amount(1) }}%.
+    </div>
+    {{ wt_checkbox(fx_form.acknowledge_large_change, id_prefix="fx-",
+                   autofocus=(fx_err == "acknowledge_large_change")) }}
+    {% endif %}
+    <div class="form-actions">{{ fx_form.save_fx(class_="btn btn-primary") }}</div>
+  </form>
+</section>

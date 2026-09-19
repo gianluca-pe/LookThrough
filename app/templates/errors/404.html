@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+{% block title %}Page not found{% endblock %}
+{% block heading %}Page not found{% endblock %}
+{% block content %}
+{% call empty_state() %}
+  <p>This page does not exist. It may have moved, or the address may be mistyped.</p>
+  <p><a href="{{ url_for('shell.index') }}">Back to the start</a></p>
+{% endcall %}
+{% endblock %}

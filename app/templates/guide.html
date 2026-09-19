@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Guide{% endblock %}
+{% block heading %}Guide{% endblock %}
+{% block content %}
+<p class="lede">Start with what you are trying to do. LookThrough keeps the underlying structure visible only where it helps.</p>
+{% if dataset_filename %}<section class="card" aria-labelledby="database-guide-heading"><h2 id="database-guide-heading">Choose where you work</h2><p>This tab uses <strong>{{ dataset_filename }}</strong>. <a href="{{ database_chooser_url }}">Change database</a> opens the chooser, where you can open another dataset or create an empty one. Other tabs keep their own selection; records are never copied between databases.</p><p class="meta">Export and restore in Settings &amp; backup apply to this tab’s database. After restarting LookThrough, choose a database again before continuing.</p></section>{% endif %}
+
+<section class="card" aria-labelledby="common-tasks-heading">
+  <h2 id="common-tasks-heading">Common tasks</h2>
+  <div class="form-actions">
+    <a class="btn" href="{{ url_for('accounts.new') }}">Add account</a>
+    <a class="btn" href="{{ url_for('positions.new') }}">Add something already owned</a>
+    <a class="btn" href="{{ url_for('positions.new', kind='fixed_deposit') }}">Add fixed deposit</a>
+    <a class="btn" href="{{ url_for('activity.new') }}">Record Buy or Sell</a>
+    <a class="btn" href="{{ url_for('positions.show_values') }}">Update statements, prices and FX</a>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="mental-model-heading">
+  <h2 id="mental-model-heading">Where things belong</h2>
+  <dl class="kv">
+    <dt>Institution</dt>
+    <dd>The bank, broker, insurer, or provider.</dd>
+    <dt>Account</dt>
+    <dd>The real custody or statement container at that institution. Do not invent an umbrella account merely to group fixed deposits.</dd>
+    <dt>Holding</dt>
+    <dd>An investment, opaque wrapper, or fixed deposit held inside an account.</dd>
+    <dt>Activity</dt>
+    <dd>A Buy, Sell, dividend, or other recorded change. Use it for quantity-tracked investments—not to onboard an existing fixed deposit.</dd>
+    <dt>Current value</dt>
+    <dd>Refresh prices, statement values, cash confirmations, and FX from Update values.</dd>
+  </dl>
+</section>
+
+<section class="card" aria-labelledby="fixed-deposit-guide-heading">
+  <h2 id="fixed-deposit-guide-heading">Fixed deposits</h2>
+  <ol>
+    <li>Choose the real account that holds or funds the deposit.</li>
+    <li>Add the fixed deposit with its current principal and date.</li>
+    <li>Continue to its bank terms: start, maturity, expected proceeds, rate, and intended maturity action.</li>
+    <li>At maturity, record the actual disposition to cash or rollover.</li>
+  </ol>
+  <p class="meta">Adding an already-open deposit does not post a cash movement. Confirmed account cash should reflect the bank statement and exclude principal already placed in the deposit.</p>
+</section>
+
+<section class="card" aria-labelledby="account-shortcuts-heading">
+  <h2 id="account-shortcuts-heading">Add inside an account</h2>
+  {% if accounts %}
+  <ul class="record-list">
+    {% for account in accounts %}
+    <li><strong>{{ account.name }}</strong> <span class="meta">· {{ account.institution_name }}</span><br>
+      <a href="{{ url_for('positions.new', account=account.id) }}">Add holding</a> ·
+      <a href="{{ url_for('positions.new', account=account.id, kind='fixed_deposit') }}">Add fixed deposit</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No accounts yet. <a href="{{ url_for('accounts.new') }}">Add an account first.</a></p>
+  {% endif %}
+</section>
+
+<p class="meta">When you deliberately want the full onboarding checklist, <a href="{{ url_for('setup.show') }}">return to guided setup</a>.</p>
+{% endblock %}

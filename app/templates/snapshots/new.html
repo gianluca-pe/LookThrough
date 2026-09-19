@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, error_summary, money, money_missing, wt_checkbox, wt_field %}
+{% block title %}Save portfolio snapshot{% endblock %}
+{% block heading %}Save portfolio snapshot{% endblock %}
+{% block content %}
+<p>This freezes the shared portfolio result and its source dates. It does not copy values back into holdings or calculate investment performance.</p>
+{% if preview %}
+<section class="card" aria-labelledby="snapshot-preview-heading">
+  <h2 id="snapshot-preview-heading">What will be frozen</h2>
+  <dl class="details-list">
+    <div><dt>As of</dt><dd>{{ preview.portfolio.as_of_date|display_date }}</dd></div>
+    <div><dt>Gross tracked value</dt><dd>{% if preview.portfolio.gross_reporting_amount is not none %}{{ money({"amount": preview.portfolio.gross_reporting_amount, "currency": preview.portfolio.reporting_currency}) }}{% else %}{{ money_missing() }}{% endif %}</dd></div>
+    <div><dt>Included portfolio value</dt><dd>{% if preview.portfolio.included_reporting_amount is not none %}{{ money({"amount": preview.portfolio.included_reporting_amount, "currency": preview.portfolio.reporting_currency}) }}{% else %}{{ money_missing() }}{% endif %}</dd></div>
+    <div><dt>Accessible now</dt><dd>{% if preview.portfolio.accessible_reporting_amount is not none %}{{ money({"amount": preview.portfolio.accessible_reporting_amount, "currency": preview.portfolio.reporting_currency}) }}{% else %}{{ money_missing() }}{% endif %}</dd></div>
+    <div><dt>Data state</dt><dd>{% if preview.portfolio.gross_status == "current" %}Current{% else %}{{ badge("stale" if preview.portfolio.gross_status == "stale" else "missing", preview.portfolio.gross_status|capitalize) }} — it will remain visible on the saved record{% endif %}</dd></div>
+  </dl>
+</section>
+{% endif %}
+{{ error_summary(form) }}
+<form method="post" class="stack" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.as_of_date, required=true, autofocus=true if form.as_of_date.errors else false) }}
+  {{ wt_field(form.note, hint="Optional context for this update, up to " ~ note_max_length|money_amount(0) ~ " characters.", autofocus=true if form.note.errors else false) }}
+  {{ wt_checkbox(form.confirm_snapshot, required=true, hint="Snapshots are immutable; a later correction is recorded in a later snapshot.", autofocus=true if form.confirm_snapshot.errors else false) }}
+  <div class="form-actions">
+    {{ form.save_snapshot(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('snapshots.index') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

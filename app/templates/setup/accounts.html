@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, wt_field, wt_checkbox, currency_datalist %}
+{% block title %}Set up accounts{% endblock %}
+{% block heading %}Add accounts{% endblock %}
+{% block content %}
+{% set ns = namespace(inst_error="", acct_error="") %}
+{% if institution_form.name.errors %}{% set ns.inst_error = institution_form.name.id %}{% endif %}
+{% set ns.acct_error = first_error(account_form, ["institution_id", "name", "reference", "account_type", "default_currency_code", "cash_tracking_mode", "portfolio_share_percent", "present_access_percent", "earliest_access_date", "access_note"]) %}
+
+<div class="setup-layout">
+  {% include "setup/_steps.html" %}
+
+  <div class="setup-content">
+
+    <section class="card" aria-labelledby="institutions-heading">
+      <h2 id="institutions-heading">Institutions</h2>
+      {% if setup.institutions %}
+      <ul class="record-list">
+        {% for institution in setup.institutions %}
+        <li>
+          <strong>{{ institution.name }}</strong>
+          <span class="meta">{{ institution.account_count }} account{{ "s" if institution.account_count != 1 }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted small">Add the banks and brokers that hold your accounts — one at a time.</p>
+      {% endif %}
+
+      {{ error_summary(institution_form, id_prefix="institution-") }}
+      <form class="inline-form" method="post" action="{{ url_for('setup.add_institution') }}" novalidate>
+        {{ institution_form.hidden_tag() }}
+        {{ wt_field(institution_form.name, required=true, id_prefix="institution-",
+                    autofocus=(ns.inst_error != "")) }}
+        {{ institution_form.add_institution(class_="btn") }}
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="accounts-heading">
+      <h2 id="accounts-heading">Accounts</h2>
+
+      {% if setup.accounts %}
+      <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th scope="col">Account</th><th scope="col">Institution</th><th scope="col">Type</th>
+            <th scope="col">Currency</th><th scope="col">Cash</th>
+            <th scope="col" class="num">Share</th><th scope="col" class="num">Access now</th><th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for account in setup.accounts %}
+          <tr>
+            <td><strong>{{ account.name }}</strong>
+              {% if account.reference %}<br><span class="meta">{{ account.reference }}</span>{% endif %}</td>
+            <td>{{ account.institution_name }}</td>
+            <td>{{ account.account_type_label }}</td>
+            <td>{{ account.default_currency_code }}{% if account.is_multicurrency %} <span class="meta">+ multi</span>{% endif %}</td>
+            <td class="small">{{ account.cash_tracking_mode_label }}</td>
+            <td class="num">{{ account.portfolio_share_percent|trim_decimal }}%</td>
+            <td class="num">{{ account.present_access_percent|trim_decimal }}%</td>
+            <td>
+              {% if account.earliest_access_date %}<span class="badge badge-warning">Locked until {{ account.earliest_access_date|display_date }}</span>{% endif %}
+              {% if not account.relationship_eligible %}<span class="badge badge-missing">Not in relationship totals</span>{% endif %}
+              {% if account.access_note %}<span class="meta">{{ account.access_note }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+
+      {% if setup.institutions %}
+      <h3>Add an account</h3>
+      {{ error_summary(account_form, id_prefix="account-") }}
+      <form class="stack" method="post" action="{{ url_for('setup.add_account') }}" novalidate>
+        {{ account_form.hidden_tag() }}
+        {{ wt_field(account_form.institution_id, required=true, id_prefix="account-",
+                    autofocus=(ns.acct_error == "institution_id")) }}
+        {{ wt_field(account_form.name, required=true, id_prefix="account-",
+                    autofocus=(ns.acct_error == "name"),
+                    hint="A name you recognise at a glance, e.g. “Joint savings” or “Everyday savings” — not the account number. Lists already show the institution next to the name.") }}
+        {{ wt_field(account_form.reference, id_prefix="account-",
+                    autofocus=(ns.acct_error == "reference"),
+                    hint="Optional account, policy, or bank reference — kept separate from the name so lists stay readable.") }}
+        {{ wt_field(account_form.account_type, required=true, id_prefix="account-",
+                    autofocus=(ns.acct_error == "account_type")) }}
+        {{ wt_field(account_form.default_currency_code, required=true, id_prefix="account-", currency_suggest=true,
+                    autofocus=(ns.acct_error == "default_currency_code"),
+                    hint="Three-letter code, e.g. EUR. You can add more currencies later.") }}
+        {{ wt_checkbox(account_form.is_multicurrency, id_prefix="account-") }}
+        {{ wt_field(account_form.cash_tracking_mode, required=true, id_prefix="account-",
+                    autofocus=(ns.acct_error == "cash_tracking_mode"),
+                    hint="How cash in this account is counted. Default: track it separately — you confirm the real balance now and then. Choose “included in aggregate” for wrappers like pension or endowment statements that only show one lump-sum value, so cash is never counted twice.") }}
+        {{ wt_field(account_form.portfolio_share_percent, required=true, input_class="money-input", id_prefix="account-",
+                    autofocus=(ns.acct_error == "portfolio_share_percent"),
+                    hint="How much of this account belongs in the portfolio. 100 = fully yours.") }}
+        {{ wt_field(account_form.present_access_percent, required=true, input_class="money-input", id_prefix="account-",
+                    autofocus=(ns.acct_error == "present_access_percent"),
+                    hint="How much of the included share you could use now. 100 = fully accessible today.") }}
+
+        <details class="disclosure"{% if account_form.earliest_access_date.errors or account_form.access_note.errors %} open{% endif %}>
+          <summary>Access and relationship details (optional)</summary>
+          <div style="margin-top: var(--space-3)">
+            {{ wt_field(account_form.earliest_access_date, id_prefix="account-",
+                        autofocus=(ns.acct_error == "earliest_access_date"),
+                        hint="When this account becomes usable, if it is locked until a date.") }}
+            {{ wt_field(account_form.access_note, id_prefix="account-",
+                        autofocus=(ns.acct_error == "access_note"),
+                        hint="Anything worth remembering about getting money out.") }}
+            {{ wt_checkbox(account_form.relationship_eligible, id_prefix="account-") }}
+          </div>
+        </details>
+
+        <div class="form-actions">
+          {{ account_form.add_account(class_="btn btn-primary") }}
+        </div>
+      </form>
+      {% else %}
+      <p class="muted small">Add an institution above before adding an account.</p>
+      {% endif %}
+    </section>
+
+    {% if setup.slice_complete %}
+    <p class="muted small">Current accounts are saved.</p>
+    <div class="form-actions">
+      <a class="btn btn-primary" href="{{ url_for('positions.show_positions') }}">
+        Continue to positions
+      </a>
+      <span class="muted small">You can also leave and reopen setup at any time.</span>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{{ currency_datalist() }}
+{% endblock %}

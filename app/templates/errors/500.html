@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+{% block title %}Something went wrong{% endblock %}
+{% block heading %}Something went wrong{% endblock %}
+{% block content %}
+{% call empty_state() %}
+  <p>The application hit an unexpected error. Your data is stored locally in SQLite
+     and was not sent anywhere.</p>
+  <p class="muted small">If this keeps happening, restart the app and, before changing
+     anything else, take a backup of the <code>instance/</code> database file.</p>
+  <p><a href="{{ url_for('shell.index') }}">Back to the start</a></p>
+{% endcall %}
+{% endblock %}

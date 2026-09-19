@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, wt_field, currency_datalist %}
+{% block title %}{{ "Add fixed deposit" if kind == "fixed_deposit" else "Add holding" }}{% endblock %}
+{% block heading %}{{ "Add fixed deposit" if kind == "fixed_deposit" else "Add holding" }}{% endblock %}
+{% block content %}
+{% set first_err = first_error(form, ["account_id", "instrument_id", "new_instrument_name", "ticker_or_isin", "valuation_currency_code", "tracking_mode", "effective_date", "opening_quantity", "statement_value"]) %}
+
+{% if kind == "fixed_deposit" %}
+{# The FD onboarding target is part of the activity family;
+   the ordinary Add-holding form is not, so the switcher appears only here. #}
+{% set activity_type = "fixed_deposit" %}
+{% include "activity/_switcher.html" %}
+<p class="lede">Record a deposit that already exists at the bank. It is a holding inside the real account below—not a Buy activity and not a separate account invented for LookThrough.</p>
+<p class="banner-warning">This records the deposit principal but does not move cash. The account's confirmed cash should already exclude that principal, or should be confirmed after this deposit is added.</p>
+{% else %}
+<p class="lede">Add something you already hold today. Use an opening quantity or statement value; old transactions are not required.</p>
+{% endif %}
+
+{{ error_summary(form) }}
+<form class="stack" method="post" action="{{ form_action }}" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.account_id, required=true, typeahead=true,
+              label="Held in account" if kind == "fixed_deposit" else none,
+              autofocus=(first_err == "account_id")) }}
+
+  {% if kind == "fixed_deposit" %}
+  <input type="hidden" name="instrument_id" value="__new__">
+  <input type="hidden" name="instrument_type" value="fixed_deposit">
+  <input type="hidden" name="tracking_mode" value="statement_valued">
+  {{ wt_field(form.new_instrument_name, required=true,
+              label="Deposit name",
+              autofocus=(first_err == "new_instrument_name"),
+              hint="Use the bank reference or a short unique name, e.g. FD_USD_207.") }}
+  {{ wt_field(form.ticker_or_isin, label="Bank reference",
+              autofocus=(first_err == "ticker_or_isin"),
+              hint="Optional. Kept separately from the readable deposit name.") }}
+  {{ wt_field(form.valuation_currency_code, required=true, currency_suggest=true,
+              label="Deposit currency",
+              autofocus=(first_err == "valuation_currency_code"),
+              hint="The currency of the principal and bank terms.") }}
+  {{ wt_field(form.effective_date, required=true,
+              label="Principal as-of date",
+              autofocus=(first_err == "effective_date"),
+              hint="The date on which the principal below is true. The next page records contractual start and maturity dates.") }}
+  {{ wt_field(form.statement_value, required=true, input_class="money-input",
+              label="Current principal",
+              autofocus=(first_err == "statement_value"),
+              hint="The amount currently held in the deposit, in its deposit currency.") }}
+  {% else %}
+  {{ wt_field(form.instrument_id, required=true, typeahead=true, new_instrument=true,
+              autofocus=(first_err == "instrument_id"),
+              hint="Choose an existing instrument or choose “Add a new instrument”.") }}
+  {% set new_instrument = form.new_instrument_selected or form.new_instrument_name.errors or form.ticker_or_isin.errors or form.valuation_currency_code.errors %}
+  <details class="disclosure"{% if new_instrument %} open{% endif %}>
+    <summary>New instrument details</summary>
+    <div class="stack" style="margin-top: var(--space-3)">
+      {{ wt_field(form.new_instrument_name,
+                  autofocus=(first_err == "new_instrument_name")) }}
+      {{ wt_field(form.ticker_or_isin, hint="Optional.") }}
+      {{ wt_field(form.instrument_type) }}
+      {{ wt_field(form.valuation_currency_code, currency_suggest=true,
+                  autofocus=(first_err == "valuation_currency_code"),
+                  hint="The currency in which prices or statements arrive.") }}
+    </div>
+  </details>
+
+  {{ wt_field(form.tracking_mode, required=true,
+              autofocus=(first_err == "tracking_mode"),
+              hint="Use quantity tracking when units and trades are known; use statement value for an opaque wrapper.") }}
+  {{ wt_field(form.effective_date, required=true,
+              autofocus=(first_err == "effective_date"),
+              hint="The date this opening quantity or statement value is true.") }}
+  {{ wt_field(form.opening_quantity, input_class="money-input",
+              autofocus=(first_err == "opening_quantity"),
+              hint="Required for quantity tracking.") }}
+  {{ wt_field(form.statement_value, input_class="money-input",
+              autofocus=(first_err == "statement_value"),
+              hint="Required for statement-value tracking.") }}
+  {% endif %}
+
+  <div class="form-actions">
+    {{ form.save_position(class_="btn btn-primary", value=("Add fixed deposit" if kind == "fixed_deposit" else "Add holding")) }}
+    <a class="btn btn-plain" href="{{ cancel_url }}">Cancel</a>
+  </div>
+</form>
+{{ currency_datalist() }}
+{% endblock %}

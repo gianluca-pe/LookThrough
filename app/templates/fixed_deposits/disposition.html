@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, error_summary, first_error, money, wt_field %}
+{% block title %}Maturity disposition — {{ registration.instrument_name }}{% endblock %}
+{% block heading %}Record maturity disposition{% endblock %}
+{% block content %}
+<p class="meta">{{ registration.instrument_name }} · {{ registration.institution_name }} · {{ registration.account_name }}</p>
+<p>{{ badge("warning", "Due today" if maturity.maturity_status == "due" else "Maturity overdue") }}
+   <span class="meta">matured {{ terms.maturity_date|display_date }} — nothing was posted automatically.</span></p>
+<p>Enter the amounts confirmed by the bank. Nothing is derived from the annual rate.</p>
+
+{% if terms.expected_maturity_proceeds_amount is not none %}
+<p class="meta">Bank-quoted expected proceeds:
+  {{ money({"amount": terms.expected_maturity_proceeds_amount, "currency": terms.currency_code}) }}.
+  This is reference data, not the amount that will be posted.</p>
+{% endif %}
+
+{% set first_err = first_error(form, ["disposition_type", "effective_date", "confirmed_principal_amount", "confirmed_interest_amount", "cash_account_id", "note", "successor_instrument_name", "successor_reference", "successor_maturity_date", "successor_annual_rate_percent", "successor_expected_proceeds_amount", "successor_maturity_action"]) %}
+{{ error_summary(form) }}
+
+{% if preview %}
+<section class="card" aria-labelledby="disposition-preview-heading">
+  <h2 id="disposition-preview-heading"{% if not form.errors %} tabindex="-1" autofocus{% endif %}>Check before recording</h2>
+  <dl class="summary-list">
+    <dt>Outcome</dt><dd>{{ dict(form.disposition_type.choices)[preview.disposition_type] }}</dd>
+    <dt>Confirmed principal</dt><dd>{{ money({"amount": preview.confirmed_principal_amount, "currency": preview.currency_code}) }}</dd>
+    <dt>Confirmed interest</dt><dd>{{ money({"amount": preview.confirmed_interest_amount, "currency": preview.currency_code}) }}</dd>
+    <dt>Cash effect</dt><dd>
+      {%- if preview.disposition_type == "manual" -%}
+      {{ money({"amount": preview.cash_effect_amount, "currency": preview.currency_code}) }} — no cash destination; the deposit closes with no recorded cash movement
+      {%- else -%}
+      {{ money({"amount": preview.cash_effect_amount, "currency": preview.currency_code}) }} to {{ preview.cash_account_name }}
+      {%- if preview.disposition_type == "rollover" %} (confirmed interest only — principal moves to the successor deposit){% endif %}
+      {%- endif -%}
+    </dd>
+    {% if preview.successor_instrument_name %}<dt>Successor deposit</dt><dd>{{ preview.successor_instrument_name }} · matures {{ preview.successor_maturity_date|display_date }}</dd>{% endif %}
+    {% if preview.expected_difference_amount is not none %}<dt>Confirmed minus bank quote</dt><dd>{{ money({"amount": preview.expected_difference_amount, "currency": preview.currency_code}) }}</dd>{% endif %}
+    {% if preview.note %}<dt>Note</dt><dd>{{ preview.note }}</dd>{% endif %}
+  </dl>
+  <p class="meta">Recording closes the original position on {{ preview.effective_date|display_date }}.
+     Corrections use Activity history → Reverse activity.</p>
+</section>
+{% endif %}
+
+<form class="stack" method="post" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.disposition_type, required=true, autofocus=(first_err == "disposition_type"),
+              hint="Return to cash posts principal plus interest; rollover creates the successor deposit and posts only interest to cash; manual closes the deposit without assuming a cash destination.") }}
+  {{ wt_field(form.effective_date, required=true, autofocus=(first_err == "effective_date"),
+              hint="The date shown on the bank settlement, on or after maturity.") }}
+  {{ wt_field(form.confirmed_principal_amount, required=true, autofocus=(first_err == "confirmed_principal_amount"),
+              hint="Confirmed principal repaid or rolled over — not a calculated amount.") }}
+  {{ wt_field(form.confirmed_interest_amount, required=true, autofocus=(first_err == "confirmed_interest_amount"),
+              hint="Enter zero when no interest was taken to cash. Never calculated from the annual rate.") }}
+  {{ wt_field(form.cash_account_id, autofocus=(first_err == "cash_account_id"),
+              hint="Required for return-to-cash and rollover outcomes. It must track this currency separately.") }}
+  {{ wt_field(form.note, autofocus=(first_err == "note"),
+              hint="Required for Other / manual; optional bank confirmation reference otherwise.") }}
+
+  <details{% if form.disposition_type.data == "rollover" or form.disposition_type.errors or form.successor_instrument_name.errors or form.successor_reference.errors or form.successor_maturity_date.errors or form.successor_annual_rate_percent.errors or form.successor_expected_proceeds_amount.errors or form.successor_maturity_action.errors %} open{% endif %}>
+    <summary>Successor deposit details (rollover only)</summary>
+    <div class="stack">
+      {{ wt_field(form.successor_instrument_name, autofocus=(first_err == "successor_instrument_name")) }}
+      {{ wt_field(form.successor_reference, autofocus=(first_err == "successor_reference"), hint="Optional bank deposit or confirmation number.") }}
+      {{ wt_field(form.successor_maturity_date, autofocus=(first_err == "successor_maturity_date")) }}
+      {{ wt_field(form.successor_annual_rate_percent, autofocus=(first_err == "successor_annual_rate_percent"), hint="Optional reference rate; it never generates interest postings.") }}
+      {{ wt_field(form.successor_expected_proceeds_amount, autofocus=(first_err == "successor_expected_proceeds_amount"), hint="Optional bank quote; reference only.") }}
+      {{ wt_field(form.successor_maturity_action, autofocus=(first_err == "successor_maturity_action"), hint="Planning intent only.") }}
+    </div>
+  </details>
+
+  <div class="form-actions">
+    {{ form.preview_disposition(class_="btn") }}
+    {% if preview %}{{ form.confirm_disposition(class_="btn btn-primary") }}{% endif %}
+    <a class="btn btn-plain" href="{{ url_for('fixed_deposits.edit', registration_id=registration.id, as_of=return_as_of.isoformat()) if return_as_of else url_for('fixed_deposits.edit', registration_id=registration.id) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

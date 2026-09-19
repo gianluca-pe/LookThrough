@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Choose a database{% endblock %} — LookThrough</title>
+<link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
+<link rel="stylesheet" href="{{ static_url('css/app.css') }}">
+</head>
+<body class="database-entry">
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="database-masthead"><a class="brand" href="{{ url_for('chooser') }}">LookThrough</a><span class="meta">Private · On this computer</span></header>
+<main id="main" class="database-main">
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+<div class="flashes" role="status">{% for category, message in messages %}<p class="flash flash-{{ category }}">{{ message }}</p>{% endfor %}</div>
+{% endif %}{% endwith %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,98 @@
+const {spawn} = require('node:child_process');
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+// Run against tests/retirement_demo.py --state funded --port 5187. Synthetic data only.
+const dir = fs.mkdtempSync('/tmp/lt-affordability-chrome-');
+const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new','--disable-gpu','--no-first-run','--disable-background-networking','--disable-component-update','--no-default-browser-check','--remote-debugging-port=9337',`--user-data-dir=${dir}`,'about:blank'], {stdio:'ignore'});
+const delay = ms => new Promise(r=>setTimeout(r,ms));
+(async()=>{
+ let targets;
+ for(let i=0;i<60;i++){try {targets=await (await fetch('http://127.0.0.1:9337/json/list')).json();break;}catch{await delay(150);}}
+ const ws = new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl);
+ await new Promise(r=>ws.addEventListener('open',r,{once:true}));
+ let id=0;const pending=new Map();
+ ws.addEventListener('message',e=>{const msg=JSON.parse(e.data);if(msg.id){const p=pending.get(msg.id);pending.delete(msg.id);msg.error?p.reject(msg.error):p.resolve(msg.result);}});
+ const call=(method,params={})=>new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});ws.send(JSON.stringify({id:n,method,params}));});
+ const evaluate=async expression=>(await call('Runtime.evaluate',{expression,returnByValue:true})).result.value;
+ const key=async k=>{await call('Input.dispatchKeyEvent',{type:'rawKeyDown',key:k,code:k,windowsVirtualKeyCode:k==='Tab'?9:13});if(k==='Enter') await call('Input.dispatchKeyEvent',{type:'char',text:'\r',unmodifiedText:'\r',key:'Enter',windowsVirtualKeyCode:13});await call('Input.dispatchKeyEvent',{type:'keyUp',key:k,code:k,windowsVirtualKeyCode:k==='Tab'?9:13});};
+ const navigate=async url=>{await call('Page.navigate',{url});await delay(350);};
+ await call('Page.enable');await call('Runtime.enable');
+ await call('Emulation.setDeviceMetricsOverride',{width:1400,height:1000,deviceScaleFactor:1,mobile:false});
+
+
+ await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+ const base='http://127.0.0.1:5187';
+ await navigate(base+'/retirement');
+ await evaluate("document.getElementById('terminal_legacy_target_amount').value='100000'");
+ await evaluate("document.getElementById('annual_savings_amount').value='0'");
+ await evaluate("document.getElementById('project').focus()");await key('Enter');await delay(900);
+ assert.equal(await evaluate("document.querySelectorAll('[data-chart=affordability]').length"),2);
+ assert.equal(await evaluate("document.querySelectorAll('main table').length"),0);
+ assert.equal(await evaluate("document.querySelector('main details').open"),false);
+ assert.match(await evaluate('document.body.innerText'),/you could draw from your portfolio and planned income/);
+ assert.match(await evaluate("Chart.getChart(document.querySelector('[data-series=spending] canvas')).options.scales.y.title.text"), /USD \/ year/);
+ assert.match(await evaluate("Chart.getChart(document.querySelector('[data-series=capital] canvas')).options.scales.y.title.text"), /today’s money/);
+ assert.equal(await evaluate(`(() => {const c=Chart.getChart(document.querySelector('[data-series=spending] canvas'));const i=10;return c.data.datasets[2].type==='line' && Math.abs(c.getDatasetMeta(2).data[i].y-c.scales.y.getPixelForValue(c.data.datasets[2].data[i]))<0.01;})()`),true);
+ await evaluate("document.getElementById('spending-year').focus()");
+ await call('Input.dispatchKeyEvent',{type:'keyDown',key:'End',code:'End',windowsVirtualKeyCode:35});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',key:'End',code:'End',windowsVirtualKeyCode:35});
+ assert.equal(await evaluate("document.getElementById('spending-age').textContent"),'92');
+ assert.equal(await evaluate(`(() => {const el=document.querySelector('[data-series=spending]');const values=JSON.parse(el.dataset.today);return document.getElementById('spending-today').textContent === 'USD ' + values.at(-1).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' / year';})()`),true);
+ assert.equal(await evaluate("document.getElementById('capital-age').textContent"),'93');
+ assert.match(await evaluate("document.getElementById('capital-goal').textContent"), /Your goal at age 93: USD 100,000.00 in today's money = USD [\d,.]+ in that year's money \(nominal\)/);
+ assert.equal(await evaluate(`(() => {const el=document.querySelector('[data-series=capital]');const format=value=>'USD '+value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});return document.getElementById('capital-nominal').textContent===format(JSON.parse(el.dataset.nominal).at(-1)) && document.getElementById('capital-today').textContent===format(JSON.parse(el.dataset.capital).at(-1));})()`),true);
+ await evaluate("document.getElementById('capital-year').focus()");
+ await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Home',code:'Home',windowsVirtualKeyCode:36});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Home',code:'Home',windowsVirtualKeyCode:36});
+ assert.equal(await evaluate("document.getElementById('capital-age').textContent"),'51');
+ assert.equal(await evaluate(`(() => {const el=document.querySelector('[data-series=capital]');const format=value=>'USD '+value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});return document.getElementById('capital-nominal').textContent===format(JSON.parse(el.dataset.nominal)[0]) && document.getElementById('capital-today').textContent===format(JSON.parse(el.dataset.capital)[0]);})()`),true);
+ // A chart click also selects an age; the final-age goal stays fixed.
+ await evaluate("document.querySelector('[data-series=capital] canvas').scrollIntoView({block:'center'})");
+ const capitalPoint=await evaluate(`(() => {const c=Chart.getChart(document.querySelector('[data-series=capital] canvas'));const r=c.canvas.getBoundingClientRect();const p=c.getDatasetMeta(0).data[10];return {x:r.left+p.x,y:r.top+p.y}})()`);
+ await call('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...capitalPoint});
+ await call('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...capitalPoint});
+ await delay(100);
+ assert.equal(await evaluate("document.getElementById('capital-age').textContent"),'61');
+ assert.match(await evaluate("document.getElementById('capital-goal').textContent"),/Your goal at age 93/);
+ await evaluate("document.getElementById('capital-year').value=document.getElementById('capital-year').max;document.getElementById('capital-year').dispatchEvent(new Event('input'))");
+ const reportUrl=await evaluate("document.querySelector('.retirement-details a').href");
+ const chartData=await evaluate(`(() => {const c=[...document.querySelectorAll('[data-chart=affordability]')];return {core:JSON.parse(c[0].dataset.core),flexible:JSON.parse(c[0].dataset.flexible),capital:JSON.parse(c[1].dataset.capital),capitalNominal:JSON.parse(c[1].dataset.nominal),total:JSON.parse(c[0].dataset.total),today:JSON.parse(c[0].dataset.today)}})()`);
+ assert.equal(await evaluate("document.querySelectorAll('[id]').length === new Set([...document.querySelectorAll('[id]')].map(e=>e.id)).size"),true);
+ await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+ fs.writeFileSync('/tmp/lt-affordability-desktop.png',Buffer.from((await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})).data,'base64'));
+ await call('Emulation.setDeviceMetricsOverride',{width:390,height:1000,deviceScaleFactor:1,mobile:false});await delay(400);
+ assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'),true);
+ fs.writeFileSync('/tmp/lt-affordability-narrow.png',Buffer.from((await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})).data,'base64'));
+ // Save the reviewed projection using keyboard, then verify the separate report.
+ await evaluate("document.querySelector('button[name=save_plan]').focus()");await key('Enter');await delay(900);
+ assert.match(await evaluate('document.body.innerText'),/Plan saved/);
+ await navigate(reportUrl);
+ assert.match(await evaluate('document.body.innerText'),/Chart data/);
+ const tableData=await evaluate(`([...document.querySelector('table').tBodies[0].rows]).map(r=>[2,3,5,6,7,8].map(i=>Number(r.cells[i].innerText.replaceAll(',',''))))`);
+ assert.deepEqual(tableData.map(r=>r[0]),chartData.core);
+ assert.deepEqual(tableData.map(r=>r[1]),chartData.flexible);
+ assert.deepEqual(tableData.map(r=>r[2]),chartData.capital);
+ assert.deepEqual(tableData.map(r=>r[3]),chartData.total);
+ assert.deepEqual(tableData.map(r=>r[4]),chartData.today);
+ assert.deepEqual(tableData.map(r=>r[5]),chartData.capitalNominal);
+ // No JavaScript: validation, editable assumptions, explicit review/save.
+ await call('Emulation.setScriptExecutionDisabled',{value:true});
+ await navigate(base+'/retirement');
+ assert.equal(await evaluate("document.getElementById('capital-year').parentElement.hidden"),true);
+ assert.match(await evaluate("document.getElementById('capital-nominal').textContent"),/USD [\d,.]+/);
+ assert.match(await evaluate("document.getElementById('capital-goal').textContent"),/Your goal at age 93/);
+ await evaluate("document.querySelector('main summary').focus()");await key('Enter');
+ assert.equal(await evaluate("document.querySelector('main details').open"),true);
+ await evaluate("document.getElementById('annual_savings_amount').value='-1';document.getElementById('project').focus()");await key('Enter');await delay(700);
+ assert.equal(await evaluate('document.activeElement.id'),'annual_savings_amount');
+ assert.match(await evaluate('document.body.innerText'),/There is a problem/);
+ await evaluate("document.getElementById('annual_savings_amount').value='0';document.getElementById('withdrawal_start_age_years').value='55';document.getElementById('project').focus()");await key('Enter');await delay(900);
+ assert.match(await evaluate('document.body.innerText'),/Retiring at 55/);
+ assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'),true);
+ await call('Emulation.setScriptExecutionDisabled',{value:false});
+ await navigate(base+'/retirement');
+ assert.equal(await evaluate("Chart.getChart(document.querySelector('canvas')).options.animation"),false);
+ assert.equal(await evaluate(`(() => {const c=document.querySelector('canvas');return c.getContext('2d').getImageData(0,0,c.width,c.height).data.some((v,i)=>i%4===3&&v>0)})()`),true);
+ console.log(JSON.stringify({charts:'both painted; exact table agreement',noJavaScript:'keyboard edit, validation focus, zero savings and later retirement passed',narrow:'390px no overflow',reducedMotion:'disabled animation',screenshots:['/tmp/lt-affordability-desktop.png','/tmp/lt-affordability-narrow.png']}));
+ ws.close();
+})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>{chrome.kill();});

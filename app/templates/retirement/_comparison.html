@@ -1,0 +1,53 @@
+<section class="card" aria-labelledby="comparison-heading">
+  <h2 id="comparison-heading">Can I fund my planned lifestyle?</h2>
+  <p>Compare keeping your full Core and Flexible budget with your spending adjustment rules, using the same portfolio, income, returns and inflation through age {{ plan.final_age_years }}.</p>
+  {% if comparison.full_budget.status == "stale" %}{{ badge("stale", "Stale inputs") }} <a href="{{ url_for('positions.show_values') }}">Update values and FX</a>.{% endif %}
+  {% if comparison.calculation_complete %}
+    {% set full_life = comparison.full_budget.lifestyle %}
+    {% if full_life.full_budget_funded_all_years %}
+    <p><strong>Your full planned budget is funded in every retirement year under these assumptions.</strong></p>
+    {% else %}
+    <p><strong>Your full planned budget is not funded in every retirement year under these assumptions.</strong>
+      {% if full_life.first_core_shortfall %}Core is first short at age {{ full_life.first_core_shortfall.age }}: {{ money({"amount": full_life.first_core_shortfall.core_shortfall_amount, "currency": comparison.currency}) }} unpaid of the {{ money({"amount": full_life.first_core_shortfall.core_target_amount, "currency": comparison.currency}) }} target. {% endif %}
+      {% if full_life.first_flexible_cut %}The full Flexible budget is first unpaid at age {{ full_life.first_flexible_cut.age }}: {{ money({"amount": full_life.first_flexible_cut.flexible_cut_amount, "currency": comparison.currency}) }} of the {{ money({"amount": full_life.first_flexible_cut.flexible_target_amount, "currency": comparison.currency}) }} target.{% endif %}
+      Inspect the annual path for the affected years and their available sources.</p>
+    {% endif %}
+    <div class="table-wrap"><table class="data">
+      <caption>Spending and money remaining. Flexible amounts use {{ comparison.base_date|display_date }} purchasing power; ending balances use future {{ comparison.currency }}.</caption>
+      <thead><tr><th scope="col">Result</th><th scope="col">Keep my planned budget</th>{% if comparison.guardrails %}<th scope="col">Apply my adjustment rules</th>{% endif %}</tr></thead>
+      <tbody>
+      {% set paths = [comparison.full_budget, comparison.guardrails] if comparison.guardrails else [comparison.full_budget] %}
+      <tr><th scope="row">Core paid in every retirement year</th>{% for path in paths %}<td>{{ "No Core budget" if path.lifestyle.core_funded_all_years is none else "Yes" if path.lifestyle.core_funded_all_years else "No" }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Years below my Flexible budget</th>{% for path in paths %}<td>{{ path.lifestyle.flexible_cut_years }} of {{ path.lifestyle.flexible_target_years }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Average yearly Flexible spending</th>{% for path in paths %}<td>{{ money({"amount": path.lifestyle.average_flexible_base_year_amount, "currency": comparison.currency}) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Total Flexible spending through the plan</th>{% for path in paths %}<td>{{ money({"amount": path.lifestyle.total_flexible_base_year_amount, "currency": comparison.currency}) }}</td>{% endfor %}</tr>
+      <tr><th scope="row">Money remaining at age {{ plan.final_age_years }}</th>{% for path in paths %}<td>{{ money({"amount": path.final_value_amount, "currency": comparison.currency}) }}</td>{% endfor %}</tr>
+      {% if plan.terminal_legacy_target_amount is not none %}
+      <tr><th scope="row">Compared with the amount I want to leave</th>{% for path in paths %}<td>{% if path.legacy_target_gap_amount is not none %}{% if path.legacy_target_gap_amount == 0 %}Exactly the amount you want to leave{% else %}{{ money({"amount": path.legacy_target_gap_amount|abs, "currency": comparison.currency}) }} {{ "more" if path.legacy_target_gap_amount > 0 else "less" }} than you want to leave{% endif %}{% if path.legacy_target_status == "stale" %} · stale target FX{% endif %}{% else %}Comparison unavailable: <a href="{{ values_update_url('fx', base_currency=plan.terminal_legacy_target_currency_code, quote_currency=comparison.currency) }}">enter target FX</a>{% endif %}</td>{% endfor %}</tr>
+      {% endif %}
+      </tbody>
+    </table></div>
+    {% if comparison.guardrails %}
+    {% set rules_life = comparison.guardrails.lifestyle %}
+    {% set rule_cut = comparison.guardrails.years | selectattr("flexible_cut_reason", "in", ["rule", "rule_and_resources"]) | first %}
+    {% if comparison.difference.flexible_spending_difference_amount != 0 or comparison.difference.ending_capital_difference_amount != 0 %}
+    <p>Over the plan, your rules produce {{ money({"amount": comparison.difference.flexible_spending_difference_amount|abs, "currency": comparison.currency}) }} {{ "less" if comparison.difference.flexible_spending_difference_amount >= 0 else "more" }} Flexible spending in base-year purchasing power, and {{ money({"amount": comparison.difference.ending_capital_difference_amount|abs, "currency": comparison.currency}) }} {{ "more" if comparison.difference.ending_capital_difference_amount >= 0 else "less" }} money at the end in future money.</p>
+    {% elif rule_cut %}
+    <p>Your rules were triggered, but both paths produce the same total Flexible spending and ending balance under these assumptions. Yearly payments may differ; inspect the annual paths for their timing and available money.</p>
+    {% else %}
+    <p>Your rules do not change Flexible spending or the ending balance under these assumptions; both paths produce the same result.</p>
+    {% endif %}
+    {% if rule_cut %}
+    <p>When your rules reduce spending — first at age {{ rule_cut.age }} — {% if rule_cut.full_lifestyle_withdrawal_rate is not none %}the full budget would need {{ rule_cut.full_lifestyle_withdrawal_rate|percentage_amount(2) }}% of that year's starting portfolio after income. Your rules allow {{ rule_cut.flexible_multiplier|percentage_amount(None) }}% of the Flexible budget in that range — {{ money({"amount": rule_cut.flexible_allowed_amount, "currency": comparison.currency}) }} of the {{ money({"amount": rule_cut.flexible_target_amount, "currency": comparison.currency}) }} target{% else %}starting capital is not positive, so no withdrawal rate applies and Flexible is limited to the year's available income within its target{% endif %}. The rules table below names the trigger ranges; this check repeats every year.</p>
+    {% elif rules_life.flexible_cut_years == 0 %}
+    <p>Your rules never reduce the Flexible budget in any year under these assumptions{% if comparison.difference.flexible_spending_difference_amount < 0 %}; they allow more than the full budget in at least one year{% endif %}.</p>
+    {% endif %}
+    {% else %}<p>No adjustment rules entered. The full-budget path still limits payments to the money available each year.</p>{% endif %}
+  {% else %}<p>The comparison needs complete portfolio and income inputs. The details below identify what is missing.</p>{% endif %}
+  <p>The amount you want to leave is a comparison target; it does not automatically change spending. Leaving more is not automatically a better outcome. These fixed-return paths do not estimate the chance of success.</p>
+  <p>Saved approach: <strong>{{ "keep my planned Flexible budget" if plan.spending_policy == "full_budget" else "apply my spending adjustment rules" }}</strong>. Viewing either path does not change your saved plan or Overview.</p>
+  <nav aria-label="Annual spending path">
+    <a href="{{ url_for('retirement.budget', as_of=as_of_date.isoformat(), path='full_budget') }}#outcome-heading"{% if selected_path == "full_budget" %} aria-current="true"{% endif %}>Inspect the full-budget path</a>
+    {% if comparison.guardrails %} · <a href="{{ url_for('retirement.budget', as_of=as_of_date.isoformat(), path='guardrails') }}#outcome-heading"{% if selected_path == "guardrails" %} aria-current="true"{% endif %}>Inspect the adjustment-rule path</a>{% endif %}
+  </nav>
+</section>

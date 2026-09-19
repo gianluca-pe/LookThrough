@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, money, money_missing %}
+{% macro delta_cell(amount, currency, missing_text) %}
+<td class="num">{% if amount is not none %}<span class="money"><span class="ccy">{{ currency }}</span> {{ amount|signed_money_amount(currency=currency) }}</span>{% else %}{{ money_missing(missing_text) }}{% endif %}</td>
+{% endmacro %}
+{% block title %}Snapshot {{ snapshot.as_of_date.isoformat() }}{% endblock %}
+{% block heading %}Snapshot {{ snapshot.as_of_date|display_date }}{% endblock %}
+{% block content %}
+<p>Saved {{ snapshot.created_at|display_date }}{% if snapshot.note %} · {{ snapshot.note }}{% endif %}</p>
+<section class="card stack" aria-labelledby="snapshot-frozen-heading">
+  <h2 id="snapshot-frozen-heading">Frozen at save</h2>
+  <dl class="details-list">
+  <div><dt>Gross tracked value</dt><dd>{% if payload.portfolio.gross_reporting_amount is not none %}{{ money({"amount": payload.portfolio.gross_reporting_amount, "currency": payload.portfolio.reporting_currency}) }}{% else %}{{ money_missing() }}{% endif %}</dd></div>
+  <div><dt>Included portfolio value</dt><dd>{% if payload.portfolio.included_reporting_amount is not none %}{{ money({"amount": payload.portfolio.included_reporting_amount, "currency": payload.portfolio.reporting_currency}) }}{% else %}{{ money_missing() }}{% endif %}</dd></div>
+  <div><dt>Accessible now</dt><dd>{% if payload.portfolio.accessible_reporting_amount is not none %}{{ money({"amount": payload.portfolio.accessible_reporting_amount, "currency": payload.portfolio.reporting_currency}) }}{% else %}{{ money_missing() }}{% endif %}</dd></div>
+  <div><dt>Data state</dt><dd>{% if payload.portfolio.gross_status == "current" %}Current{% else %}{{ badge("stale" if payload.portfolio.gross_status == "stale" else "missing", payload.portfolio.gross_status|capitalize) }}{% endif %}</dd></div>
+  </dl>
+  {% if payload.role_allocation %}
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th scope="col">Role</th><th scope="col" class="num">Included</th><th scope="col" class="num">% of classified</th><th scope="col" class="num">Accessible now</th></tr></thead>
+    <tbody>
+      {% for row in payload.role_allocation if row.included_reporting_amount is not none %}
+      <tr>
+        <th scope="row">{{ economic_role_labels[row.code] }}</th>
+        <td class="num">{{ money({"amount": row.included_reporting_amount, "currency": payload.portfolio.reporting_currency}) }}</td>
+        <td class="num">{% if row.included_percentage is not none %}{{ row.included_percentage|percentage_amount(1) }}%{% else %}—{% endif %}</td>
+        <td class="num">{{ money({"amount": row.accessible_reporting_amount, "currency": payload.portfolio.reporting_currency}) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+  {% if payload.bucket_allocation %}
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th scope="col">Bucket</th><th scope="col" class="num">Included</th><th scope="col" class="num">% of bucketed</th><th scope="col" class="num">Accessible now</th></tr></thead>
+    <tbody>
+      {% for row in payload.bucket_allocation if row.included_reporting_amount is not none %}
+      <tr>
+        <th scope="row">{{ fire_bucket_labels[row.code] }}</th>
+        <td class="num">{{ money({"amount": row.included_reporting_amount, "currency": payload.portfolio.reporting_currency}) }}</td>
+        <td class="num">{% if row.included_percentage is not none %}{{ row.included_percentage|percentage_amount(1) }}%{% else %}—{% endif %}</td>
+        <td class="num">{{ money({"amount": row.accessible_reporting_amount, "currency": payload.portfolio.reporting_currency}) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+<section class="card stack" aria-labelledby="comparison-heading">
+  <h2 id="comparison-heading">{% if comparison %}Since {{ comparison.earlier_as_of_date|display_date }}{% else %}Comparison{% endif %}</h2>
+  {% if not comparison %}
+  <p>This is the first snapshot, so there is no earlier frozen record to compare.</p>
+  {% elif comparison.status == "incompatible_currency" %}
+  <p>These snapshots use different reporting currencies, so their amounts are not compared.</p>
+  {% else %}
+  {% if comparison.status == "partial" %}{{ badge("missing", "Partial") }}
+  <p class="meta">Some inputs are incomplete, so the affected lines are withheld.</p>
+  {% elif comparison.status == "stale" %}{{ badge("stale", "Stale") }}
+  <p class="meta">Compared with stale values or FX left as recorded.</p>{% endif %}
+  <div class="table-wrap"><table class="data">
+    <tbody>
+      <tr><th scope="row">Gross tracked value change</th>{{ delta_cell(comparison.gross_value_change, comparison.reporting_currency, "incomplete") }}</tr>
+      <tr><th scope="row">Known external cash flow</th>{{ delta_cell(comparison.external_cash_flow, comparison.reporting_currency, "incomplete") }}</tr>
+      <tr><th scope="row">Cash-confirmation corrections</th>{{ delta_cell(comparison.cash_reconciliation, comparison.reporting_currency, "incomplete") }}</tr>
+      <tr><th scope="row">Unattributed value change</th>{{ delta_cell(comparison.unattributed_value_change, comparison.reporting_currency, "withheld") }}</tr>
+    </tbody>
+  </table></div>
+  <p class="hint">Unattributed value change may include market and FX movement, income, fees, changes to tracked scope or metadata, and other effects. It is not a return calculation.</p>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th scope="col">Planning overlay</th><th scope="col" class="num">Change</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Included value change</th>{{ delta_cell(comparison.included_value_change, comparison.reporting_currency, "incomplete") }}</tr>
+      <tr><th scope="row">Accessible value change</th>{{ delta_cell(comparison.accessible_value_change, comparison.reporting_currency, "incomplete") }}</tr>
+    </tbody>
+  </table></div>
+  <p class="hint">Share and access settings change with your accounts, not with cash flows — these overlays are shown separately, never netted above.</p>
+  {% endif %}
+</section>
+<p><a href="{{ url_for('snapshots.index') }}">All snapshots</a> · <a href="{{ url_for('snapshots.new') }}">Save another snapshot</a></p>
+{% endblock %}

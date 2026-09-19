@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, wt_checkbox, wt_field, currency_datalist %}
+{% block title %}Add account{% endblock %}
+{% block heading %}Add account{% endblock %}
+{% block content %}
+<p class="lede">Create the real bank, broker, policy, or custody account first. Investments and fixed deposits are holdings inside it.</p>
+
+{% set first_err = first_error(form, ["institution_id", "name", "reference", "account_type", "default_currency_code", "cash_tracking_mode", "portfolio_share_percent", "present_access_percent", "earliest_access_date", "access_note"]) %}
+
+{{ error_summary(form) }}
+<form class="stack" method="post" action="{{ url_for('accounts.new') }}" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.institution_id, required=true,
+              autofocus=(first_err == "institution_id")) }}
+  {{ wt_field(form.name, required=true, autofocus=(first_err == "name"),
+              hint="Use the name shown by the institution. Put the account number in the separate reference field.") }}
+  {{ wt_field(form.reference, autofocus=(first_err == "reference"),
+              hint="Optional account, policy, or bank reference.") }}
+  {{ wt_field(form.account_type, required=true,
+              autofocus=(first_err == "account_type"),
+              hint="A fixed deposit is normally a holding inside its real cash or deposit account—not a separate account invented for the app.") }}
+  {{ wt_field(form.default_currency_code, required=true, currency_suggest=true,
+              autofocus=(first_err == "default_currency_code"),
+              hint="Three-letter code, e.g. USD. More currencies can be recorded later when the account is multicurrency.") }}
+  {{ wt_checkbox(form.is_multicurrency) }}
+  {{ wt_field(form.cash_tracking_mode, required=true,
+              autofocus=(first_err == "cash_tracking_mode"),
+              hint="Track cash separately for ordinary bank and brokerage accounts. Use aggregate only when one statement value already includes everything.") }}
+  {{ wt_field(form.portfolio_share_percent, required=true, input_class="money-input",
+              autofocus=(first_err == "portfolio_share_percent"),
+              hint="How much belongs in this portfolio. This is separate from your authority to access it.") }}
+  {{ wt_field(form.present_access_percent, required=true, input_class="money-input",
+              autofocus=(first_err == "present_access_percent"),
+              hint="How much of the included share could be used now.") }}
+
+  <details class="disclosure"{% if form.earliest_access_date.errors or form.access_note.errors %} open{% endif %}>
+    <summary>Access and relationship details (optional)</summary>
+    <div class="stack" style="margin-top: var(--space-3)">
+      {{ wt_field(form.earliest_access_date,
+                  autofocus=(first_err == "earliest_access_date")) }}
+      {{ wt_field(form.access_note, autofocus=(first_err == "access_note")) }}
+      {{ wt_checkbox(form.relationship_eligible) }}
+    </div>
+  </details>
+
+  <div class="form-actions">
+    {{ form.add_account(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('accounts.index') }}">Cancel</a>
+  </div>
+</form>
+<p class="meta">Institution missing? <a href="{{ url_for('institutions.new') }}">Add institution</a> and return here.</p>
+{{ currency_datalist() }}
+{% endblock %}

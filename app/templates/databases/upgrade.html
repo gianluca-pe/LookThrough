@@ -1,0 +1,13 @@
+{% extends 'databases/base.html' %}
+{% block title %}Review database upgrade{% endblock %}
+{% block content %}
+<p class="database-back"><a href="{{ url_for('chooser') }}">← Choose a database</a></p>
+<div class="database-intro"><p class="database-eyebrow">Keep your records, update their format</p><h1>Upgrade this database</h1><p><strong>{{ candidate.name or candidate.filename }}</strong>{% if candidate.name %} · <span class="database-filename">{{ candidate.filename }}</span>{% endif %}</p></div>
+<section class="card stack"><p>This database was saved by an older version of LookThrough. Its structure needs an update before this version can open it.</p>
+<ol class="database-upgrade-steps"><li>Save a complete local recovery copy.</li><li>Apply and verify the update on a temporary copy.</li><li>Replace the selected file only after verification succeeds.</li></ol>
+<p>This update stores financial values exactly. Existing amounts will be rounded to their currency’s decimal places; units, prices and FX rates to six decimals. A before/after record of changed values stays in the upgraded database and its full JSON backups. Frozen comparison results and downloaded source-rate evidence stay unchanged.</p>
+<p>If the update fails, your original database stays in place. Close other applications using this file before continuing.</p>
+<details><summary>Update details &amp; recovery location</summary><div class="stack"><p>Applies this release’s pending database migrations from revision <code>{{ candidate.revision }}</code>. This updates stored fields and their supported formats; it does not combine databases or adopt a retirement plan.</p><p>Recovery copies are saved in <span class="database-filename">{{ folder }}/upgrade-backups</span>. The exact filename is shown when the upgrade finishes.</p></div></details>
+<form method="post" action="{{ url_for('upgrade_selected') }}">{{ form.hidden_tag() }}<p class="form-actions">{{ form.submit(class_='btn btn-primary') }}<a class="btn" href="{{ url_for('chooser') }}">Cancel</a></p></form>
+</section>
+{% endblock %}

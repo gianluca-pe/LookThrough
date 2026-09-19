@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import error_summary, wt_checkbox %}
+{% block title %}Review FX rates{% endblock %}
+{% block heading %}Review FX rates{% endblock %}
+{% block content %}
+<p class="meta">Calculations use reference rates rounded to 6 decimal places. Original downloaded observations remain in the saved source record.</p>
+<section class="card stack">
+  <p class="eyebrow">{{ 'Banca d’Italia' if source == 'banca_italia' else 'Manual reference rates' }}</p>
+  <h2>One reference date: {{ data.effective_date|display_date }}</h2>
+  <p>Save {{ data.rates|length - 1 }} rates against EUR in this database. All inverses and crosses use this set. Newer saved sets take over on their own dates.</p>
+  {% if not previous %}<p class="flash flash-info">From this reference date, these rates will replace your individual pairs for consolidation. Earlier dated observations remain stored and continue to serve dates before this set.</p>{% endif %}
+  {% if stale %}<p class="flash flash-warning">This reference date is older than your FX freshness preference. It will still be shown as stale after saving.</p>{% endif %}
+  {% if missing %}<div class="flash flash-warning" role="alert"><strong>A complete update cannot be saved.</strong><p>Required currencies missing: {{ missing|join(', ') }}. Your saved rates are unchanged.</p><p><a href="{{ url_for('fx_settings.manual') }}">Enter a complete set manually</a></p></div>{% endif %}
+  {% if error %}<p class="flash flash-error" role="alert" tabindex="-1"{% if not same_day and not large %} autofocus{% endif %}>{{ error }}</p>{% endif %}
+  <div class="table-wrap"><table class="data"><caption>Rates required by your accounts, holdings and settings · foreign currency units per 1 EUR</caption><thead><tr><th scope="col">Currency</th><th scope="col">New rate</th><th scope="col">Used for</th></tr></thead><tbody>
+    {% for code, purposes in uses.items() %}<tr><th scope="row">{{ code }}</th><td>{{ data.rates.get(code, 'Missing') }}</td><td>{{ purposes|join('; ') }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if changes %}<details{% if same_day or large %} open{% endif %}><summary>{{ changes|length }} changed or newly available currencies{% if previous %} compared with {{ previous.effective_date|display_date }}{% endif %}</summary>
+    <div class="table-wrap"><table class="data"><thead><tr><th scope="col">Currency</th><th scope="col">Previous</th><th scope="col">Proposed</th><th scope="col">Absolute change</th></tr></thead><tbody>
+    {% for change in changes %}<tr><th scope="row">{{ change.code }}</th><td>{{ change.before or 'Not available' }}</td><td>{{ change.after or 'Not available' }}</td><td>{% if change.percent is not none %}{{ change.percent|money_amount(2) }}%{% if change.large %} · check this rate{% endif %}{% else %}—{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div></details>{% endif %}
+  {% if unavailable %}<p class="meta">The provider marks these currencies unavailable: {{ unavailable|join(', ') }}. They are not saved as zero or substituted with another date.</p>{% endif %}
+  <form method="post" action="{{ url_for('fx_settings.save') }}" novalidate>
+    {{ form.hidden_tag() }}{{ error_summary(form) }}
+    {% if same_day %}<p class="flash flash-warning">This date already has saved rates. Replacement retains the previous edition and can change calculations viewed for this date.</p>{{ wt_checkbox(form.replace, autofocus=error and not form.replace.data) }}{% endif %}
+    {% if large %}{{ wt_checkbox(form.acknowledge, autofocus=error and (not same_day or form.replace.data)) }}{% endif %}
+    <p class="form-actions">{% if not missing %}<button class="btn btn-primary" type="submit">Save these FX rates</button>{% endif %}<a class="btn" href="{{ url_for('maintenance.settings', _anchor='fx-settings') }}">Cancel</a><a href="{{ url_for('fx_settings.manual') }}">Enter rates manually</a></p>
+  </form>
+</section>
+{% endblock %}

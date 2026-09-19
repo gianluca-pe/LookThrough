@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, money, wt_field %}
+{% block title %}Reverse activity{% endblock %}
+{% block heading %}Reverse activity{% endblock %}
+{% block as_of %}<span class="as-of">Original date {{ reversal.effective_date|display_date }}</span>{% endblock %}
+{% block content %}
+<section class="card" aria-labelledby="confirm-reversal-heading">
+  <h2 id="confirm-reversal-heading">Confirm the correction</h2>
+  <p>The original activity stays in history. This records equal-and-opposite
+     effects on the original date — nothing is edited or deleted.</p>
+  {% if reversal.is_group %}
+  <p><strong>The linked dividend and purchase will both be reversed.</strong></p>
+  {% endif %}
+  <ul class="record-list">
+    {% for row in reversal.activities %}
+    <li>
+      <strong>{{ row.activity_label }}</strong> — {{ row.instrument_name or row.account_name }}
+      <span class="meta">
+        {{ row.effective_date|display_date }}
+        {%- if row.quantity_effect is not none %} · {{ row.quantity_effect|trim_decimal|money_amount(none) }} units{% endif %}
+        {%- if row.cash_effect is not none %} · {{ money({"amount": row.cash_effect, "currency": row.currency_code}) }}{% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{{ error_summary(form) }}
+<form class="stack" method="post" action="{{ url_for('activity.reverse', transaction_id=reversal.requested_transaction_id) }}" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.reason, required=true, hint="Explain why this posted activity is being corrected.", autofocus=true if form.reason.errors else false) }}
+  <p class="form-actions">
+    {{ form.confirm_reversal(class_="btn btn-primary") }}
+    <a class="btn" href="{{ url_for('activity.detail', transaction_id=reversal.requested_transaction_id) }}">Cancel</a>
+  </p>
+</form>
+{% endblock %}

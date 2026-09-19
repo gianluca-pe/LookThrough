@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}FX update unavailable{% endblock %}
+{% block heading %}FX update unavailable{% endblock %}
+{% block content %}
+<section class="card stack">
+  <div class="flash flash-warning" role="alert" tabindex="-1" autofocus><strong>The rates were not updated.</strong><p>{{ reason }}</p></div>
+  <p>Your saved rates and their dates are unchanged. You can continue using the app offline.</p>
+  <p>If Banca d’Italia has changed its download address or JSON format, LookThrough’s downloader will need an update. You can still enter a complete dated set yourself or correct a saved rate.</p>
+  <p class="form-actions"><a class="btn btn-primary" href="{{ url_for('fx_settings.manual') }}">Enter rates manually</a><a class="btn" href="{{ url_for('maintenance.settings', _anchor='fx-settings') }}">Back to FX settings</a></p>
+</section>
+{% endblock %}

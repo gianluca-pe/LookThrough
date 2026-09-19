@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state, error_summary, money, currency_datalist %}
+{% block title %}Activity history{% endblock %}
+{% block heading %}Activity history{% endblock %}
+{% block content %}
+
+{# Filter errors are announced and linked to their fields; valid selections
+   are preserved by the backend re-render. #}
+{% macro filter_error(name) -%}
+{% if filter_errors.get(name) %}
+<div class="field-error" id="{{ name }}-error">{{ filter_errors[name] }}</div>
+{%- endif %}
+{%- endmacro %}
+
+<form class="card stack" method="get" action="{{ url_for('activity.history') }}" novalidate>
+  <h2>Filter activity</h2>
+  {% if filter_errors %}
+  {% set filter_labels = {"date_from": "From date", "date_to": "To date", "account_id": "Account", "instrument_id": "Instrument", "type": "Type", "currency": "Currency", "status": "Status"} %}
+  {% set summary_items = [] %}
+  {% for name, message in filter_errors.items() %}{% set _ = summary_items.append((name, filter_labels.get(name), message)) %}{% endfor %}
+  {{ error_summary(items=summary_items) }}
+  {% endif %}
+  <div class="form-grid">
+    <div class="field">
+      <label for="date_from">From date</label>
+      <input id="date_from" name="date_from" type="date" value="{{ filters.date_from.isoformat() if filters.date_from else '' }}"
+             {% if filter_errors.get('date_from') %}aria-invalid="true" aria-describedby="date_from-error"{% endif %}>
+      {{ filter_error('date_from') }}
+    </div>
+    <div class="field">
+      <label for="date_to">To date</label>
+      <input id="date_to" name="date_to" type="date" value="{{ filters.date_to.isoformat() if filters.date_to else '' }}"
+             {% if filter_errors.get('date_to') %}aria-invalid="true" aria-describedby="date_to-error"{% endif %}>
+      {{ filter_error('date_to') }}
+    </div>
+    <div class="field">
+      <label for="account_id">Account</label>
+      <select id="account_id" name="account_id" data-typeahead="true"
+              {% if filter_errors.get('account_id') %}aria-invalid="true" aria-describedby="account_id-error"{% endif %}>
+        <option value="">All accounts</option>
+        {% for option in account_options %}
+        <option value="{{ option.value }}"{% if filters.account_id == option.value %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+      {{ filter_error('account_id') }}
+    </div>
+    <div class="field">
+      <label for="instrument_id">Instrument</label>
+      <select id="instrument_id" name="instrument_id" data-typeahead="true"
+              {% if filter_errors.get('instrument_id') %}aria-invalid="true" aria-describedby="instrument_id-error"{% endif %}>
+        <option value="">All instruments</option>
+        {% for option in instrument_options %}
+        <option value="{{ option.value }}"{% if filters.instrument_id == option.value %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+      {{ filter_error('instrument_id') }}
+    </div>
+    <div class="field">
+      <label for="type">Type</label>
+      <select id="type" name="type"
+              {% if filter_errors.get('type') %}aria-invalid="true" aria-describedby="type-error"{% endif %}>
+        <option value="">All types</option>
+        {% for value, label in type_options %}
+        <option value="{{ value }}"{% if filters.activity_type == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {{ filter_error('type') }}
+    </div>
+    <div class="field">
+      <label for="currency">Currency</label>
+      <input id="currency" name="currency" maxlength="3" value="{{ filters.currency_code or '' }}"
+             list="currency-codes" autocomplete="off"
+             {% if filter_errors.get('currency') %}aria-invalid="true" aria-describedby="currency-error"{% endif %}>
+      {{ filter_error('currency') }}
+    </div>
+    <div class="field">
+      <label for="status">Status</label>
+      <select id="status" name="status"
+              {% if filter_errors.get('status') %}aria-invalid="true" aria-describedby="status-error"{% endif %}>
+        <option value="">All statuses</option>
+        {% for value, label in status_options %}
+        <option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {{ filter_error('status') }}
+    </div>
+  </div>
+  <p class="form-actions"><button class="btn btn-primary" type="submit">Apply filters</button><a class="btn" href="{{ url_for('activity.history') }}">Clear</a></p>
+</form>
+
+{% if not filter_errors %}
+<p><a class="btn" href="{{ export_url }}">Export this Activity view as CSV</a></p>
+{% endif %}
+
+{% if activities %}
+<div class="table-wrap">
+  <table class="data">
+    <thead><tr><th scope="col">Date</th><th scope="col">Activity</th><th scope="col">Account</th><th scope="col">Instrument</th><th scope="col" class="num">Quantity effect</th><th scope="col" class="num">Cash effect</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+    <tbody>
+    {% for row in activities %}
+      <tr>
+        <td>{{ row.effective_date|display_date }}</td>
+        <th scope="row">{{ row.activity_label }}</th>
+        <td>{{ row.institution_name }}{% if row.account_name %} · {{ row.account_name }}{% endif %}</td>
+        <td>{{ row.instrument_name or "—" }}</td>
+        <td class="num">{% if row.quantity_effect is not none %}{{ row.quantity_effect|trim_decimal|money_amount(none) }}{% else %}—{% endif %}</td>
+        <td class="num">{% if row.cash_effect is not none %}{{ money({"amount": row.cash_effect, "currency": row.currency_code}) }}{% else %}—{% endif %}</td>
+        <td>{{ row.status_label }}</td>
+        <td><a href="{{ url_for('activity.detail', transaction_id=row.transaction_id) }}">View<span class="sr-only"> {{ row.activity_label }} on {{ row.effective_date|display_date }}</span></a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+{# An empty result is a real empty state, not an error. #}
+{% if filters_active %}
+{% call empty_state() %}<p>No activities match these filters. <a href="{{ url_for('activity.history') }}">Clear the filters</a> to see everything.</p>{% endcall %}
+{% else %}
+{% call empty_state(action_url=url_for('activity.new', return_to='activity_history'), action_label="Add activity") %}<p>No activities recorded yet.</p>{% endcall %}
+{% endif %}
+{% endif %}
+{{ currency_datalist() }}
+{% endblock %}

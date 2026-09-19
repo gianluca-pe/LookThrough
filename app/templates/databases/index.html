@@ -1,0 +1,20 @@
+{% extends 'databases/base.html' %}
+{% block content %}
+<div class="database-intro"><p class="database-eyebrow">Your local workspace</p><h1>Choose a database</h1>
+<p>Open a portfolio to pick up where you left off, or start with an empty database.</p></div>
+{% if folder_error %}<p class="flash flash-error" role="alert">{{ folder_error }}</p>{% endif %}
+<div class="database-list">
+{% for entry in entries %}
+<section class="card database-card" aria-labelledby="database-{{ loop.index }}">
+<div class="database-card-copy"><span class="database-state">{{ {'ready': 'Ready to open', 'empty': 'Setup unfinished', 'upgrade': 'Upgrade required', 'unavailable': 'Unavailable'}[entry.status] }}</span>
+<h2 id="database-{{ loop.index }}">{{ entry.name or entry.filename }}</h2>
+{% if entry.name %}<p class="database-filename">{{ entry.filename }}</p>{% endif %}
+{% if entry.reason %}<p class="hint">{{ entry.reason }}</p>{% elif entry.status == 'upgrade' %}<p class="hint">Review the update and save a recovery copy before opening.</p>{% elif entry.status == 'empty' %}<p class="hint">Continue setup or restore a LookThrough backup.</p>{% endif %}</div>
+{% if entry.status != 'unavailable' %}<form method="post" action="{{ url_for('open_database') }}">{{ entry.form.hidden_tag() }}
+<button class="btn {{ 'btn-primary' if entry.status != 'upgrade' else '' }}" type="submit" aria-label="{{ 'Review upgrade for' if entry.status == 'upgrade' else 'Open' }} {{ entry.name or entry.filename }}{% if entry.name %} — {{ entry.filename }}{% endif %}">{{ 'Review upgrade' if entry.status == 'upgrade' else 'Open' }} <span aria-hidden="true">→</span></button></form>{% endif %}
+</section>
+{% else %}{% if not folder_error %}<section class="card database-empty"><h2>A fresh start</h2><p>No databases were found in your local folder. Create one to begin setting up your portfolio.</p></section>{% endif %}{% endfor %}
+</div>
+<div class="database-new"><div><h2>Start another portfolio</h2><p class="muted">A separate database starts empty and keeps its own records.</p></div><a class="btn" href="{{ url_for('new_database') }}">Create a new database</a></div>
+<footer class="database-footer"><details><summary>Local folder &amp; database help</summary><div class="stack"><p class="database-filename">{{ folder }}</p><p>Place LookThrough .sqlite3, .sqlite or .db files directly in this folder, then refresh. Close any application using a file before adding it. Subfolders and linked files are not searched.</p><p>Each browser tab stays with the database you open in it. Nothing is copied between databases. Restarting LookThrough requires choosing again.</p><p>Recovery copies from upgrades are kept in the upgrade-backups subfolder. To recover one, close LookThrough and copy it into the local folder under a new filename.</p></div></details><a href="{{ url_for('chooser') }}">Refresh list</a></footer>
+{% endblock %}

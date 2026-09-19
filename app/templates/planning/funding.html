@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, wt_field, money %}
+{% block title %}Funding assumptions{% endblock %}
+{% block heading %}Funding assumptions{% endblock %}
+{% block content %}
+<p>These owner-entered assumptions drive the finite Now and Bridge funding view. They are not recommendations.</p>
+<dl class="details-list">
+  <div><dt>Current annual spending</dt><dd>{{ money({"amount": portfolio.annual_spending_amount, "currency": portfolio.annual_spending_currency_code}) }}</dd></div>
+</dl>
+
+{{ error_summary(form) }}
+<form method="post" class="stack" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.annual_inflation_percent, required=true, input_class="money-input",
+              autofocus=true if form.annual_inflation_percent.errors else false,
+              hint="Used to increase current annual spending for each later year. No default is assumed.") }}
+  <div class="form-actions">
+    {{ form.save_assumptions(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('maintenance.settings') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

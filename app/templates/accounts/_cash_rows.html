@@ -1,0 +1,36 @@
+{% from "_macros.html" import money, money_missing, badge %}
+{# Compact cash sleeve table. Included by the setup Cash step only: Accounts
+   index folds every currency into one cell of the account row, and account
+   detail renders full per-currency traceability cards (checkpoint evidence,
+   later activity effects) — genuinely different presentations, not variants
+   of this table.
+   Rows are CashBalance view models; status words state the source mode,
+   missing/included never renders as zero. #}
+{% if cash_rows %}
+<div class="table-wrap">
+  <table class="data">
+    <thead>
+      <tr><th scope="col">Currency</th><th scope="col" class="num">Cash</th><th scope="col">Status</th></tr>
+    </thead>
+    <tbody>
+      {% for cash in cash_rows %}
+      <tr>
+        <td>{{ cash.currency_code }}</td>
+        <td class="num">
+          {% if cash.amount is not none %}{{ money({"amount": cash.amount, "currency": cash.currency_code}) }}
+          {% elif cash.status == "settled_elsewhere" %}{{ money_missing("settles in another account") }}
+          {% else %}{{ money_missing("included in aggregate") }}{% endif %}
+        </td>
+        <td class="small">
+          {% if cash.status == "confirmed" %}Confirmed on {{ cash.checkpoint.effective_date|display_date }}
+          {% elif cash.status == "calculated" %}Calculated from activity
+          {% elif cash.status == "settled_elsewhere" %}Activity cash settles in the linked cash account
+          {% else %}Included in aggregate{% endif %}
+          {% if cash.amount is not none and cash.amount < 0 %} {{ badge("warning", "Negative cash") }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

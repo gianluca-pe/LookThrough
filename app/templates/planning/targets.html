@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, wt_field %}
+{% block title %}Allocation targets{% endblock %}
+{% block heading %}Allocation targets{% endblock %}
+{% block content %}
+<p>Enter your acceptable range for each broad allocation role. These are your planning inputs, not recommendations.</p>
+<p class="meta">All four ranges together must allow a complete 100% allocation. Current allocation uses your included portfolio share; immediate FIRE funding uses accessible value separately.</p>
+
+{% set target_fields = [] %}
+{% for role_code, role_label in economic_role_labels.items() %}
+  {% set _ = target_fields.append(role_code ~ "_minimum_percent") %}
+  {% set _ = target_fields.append(role_code ~ "_maximum_percent") %}
+{% endfor %}
+{% set first_err = first_error(form, target_fields) %}
+{{ error_summary(form) }}
+
+<form method="post" class="stack" novalidate>
+  {{ form.hidden_tag() }}
+  {% for role_code, role_label in economic_role_labels.items() %}
+  <fieldset class="field">
+    <legend>{{ role_label }}</legend>
+    <div class="form-grid">
+      {{ wt_field(form[role_code ~ "_minimum_percent"], required=true, input_class="money-input", label="Minimum (%)", autofocus=(first_err == role_code ~ "_minimum_percent")) }}
+      {{ wt_field(form[role_code ~ "_maximum_percent"], required=true, input_class="money-input", label="Maximum (%)", autofocus=(first_err == role_code ~ "_maximum_percent")) }}
+    </div>
+  </fieldset>
+  {% endfor %}
+  <div class="form-actions">
+    {{ form.save_targets(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('maintenance.settings') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

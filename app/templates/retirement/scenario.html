@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money, badge %}
+{% block title %}{{ comparison.name }} — retirement comparison{% endblock %}
+{% block heading %}{{ comparison.name }}{% endblock %}
+{% block scripts %}{% if scenario_chart %}
+<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script>
+<script src="{{ static_url('js/charts.js') }}" defer></script>
+{% endif %}{% endblock %}
+{% macro amount(value) %}{{ money({'amount': value, 'currency': comparison.baseline.reporting_currency}) }}{% endmacro %}
+{% block content %}
+{% set baseline = comparison.baseline %}{% set plan = baseline.plan %}
+<p class="lede">How do your entered early returns change Core funding, Flexible spending and ending capital?</p>
+<p>Portfolio {{ baseline.as_of_date|display_date }} · saved {{ saved_at|display_date }} · {{ baseline.reporting_currency }}. This saved comparison keeps its original inputs and results even after portfolio or plan edits. Your adopted plan and Overview are unchanged.</p>
+<p><a href="{{ url_for('retirement.scenarios') }}">All comparisons / create another</a> · <a href="{{ url_for('retirement.index') }}">Current Retirement plan</a></p>
+{% if baseline.status == 'stale' %}<p>{{ badge('stale', 'Stale inputs when saved') }} Review the source dates below. Updating current values does not refresh this saved comparison.</p>{% endif %}
+<section class="card" aria-labelledby="comparison-heading"><h2 id="comparison-heading">Effect on your retirement</h2>
+<p>Baseline uses the saved constant role returns. The entered path replaces {{ 'the first annual return row' if comparison.annual_returns|length == 1 else 'the first ' ~ comparison.annual_returns|length ~ ' annual return rows' }}, then resumes those baseline returns. Both use {{ 'your spending adjustment rules' if baseline.spending_policy == 'guardrails' else 'your full Core and target Flexible budget' }}.</p>
+{% set base_ok = baseline.lifestyle.core_funded_all_years %}
+{% set stress_ok = comparison.stress.lifestyle.core_funded_all_years %}
+<div class="outcome-lead">
+{% if base_ok is none %}
+<p class="outcome-state">This plan has no Core spending target — compare Flexible spending and ending capital below.</p>
+{% elif base_ok and stress_ok %}
+<p class="outcome-state">Core is funded in every retirement year under both paths, under these assumptions.</p>
+{% else %}
+<p class="outcome-state">Core is not funded in every retirement year{{ ' under the entered path' if base_ok else ' under the baseline' if stress_ok else ' under either path' }}.</p>
+<p>{% if not base_ok and baseline.lifestyle.first_core_shortfall %}Baseline: first short at age {{ baseline.lifestyle.first_core_shortfall.age }}, {{ amount(baseline.lifestyle.first_core_shortfall.core_shortfall_amount) }} unpaid. {% endif %}{% if not stress_ok and comparison.stress.lifestyle.first_core_shortfall %}Entered path: first short at age {{ comparison.stress.lifestyle.first_core_shortfall.age }}, {{ amount(comparison.stress.lifestyle.first_core_shortfall.core_shortfall_amount) }} unpaid.{% endif %}</p>
+{% endif %}
+</div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Retirement outcome comparison"><table class="data comparison-table">
+<thead><tr><th scope="col">Question</th><th scope="col">Baseline</th><th scope="col">Entered return path</th></tr></thead>
+<tbody>
+<tr><th scope="row">Is Core funded every retirement year?</th>{% for path in [baseline, comparison.stress] %}<td>{{ 'No Core target' if path.lifestyle.core_funded_all_years is none else 'Yes, under these assumptions' if path.lifestyle.core_funded_all_years else 'No' }}{% if path.lifestyle.first_core_shortfall %}<br>First short at age {{ path.lifestyle.first_core_shortfall.age }}: {{ amount(path.lifestyle.first_core_shortfall.core_shortfall_amount) }} unpaid.{% endif %}</td>{% endfor %}</tr>
+<tr><th scope="row">Is the full Core and Flexible target funded every year?</th>{% for path in [baseline, comparison.stress] %}<td>{{ "Yes, under these assumptions" if path.lifestyle.full_budget_funded_all_years else "No — see cuts and shortfalls below" }}</td>{% endfor %}</tr>
+<tr><th scope="row">Years with Flexible cuts / longest run</th>{% for path in [baseline, comparison.stress] %}<td>{{ path.lifestyle.flexible_cut_years }} / {{ path.lifestyle.longest_flexible_cut_streak }} years</td>{% endfor %}</tr>
+<tr><th scope="row">Total Flexible paid (base-year purchasing power)</th>{% for path in [baseline, comparison.stress] %}<td class="num">{{ amount(path.lifestyle.total_flexible_base_year_amount) }}</td>{% endfor %}</tr>
+<tr><th scope="row">Smallest annual Flexible paid (base-year purchasing power)</th>{% for path in [baseline, comparison.stress] %}<td class="num">{{ amount(path.lifestyle.minimum_flexible_base_year_amount) }}</td>{% endfor %}</tr>
+<tr><th scope="row">Capital at age {{ baseline.assumption.final_age_years }} (future money)</th>{% for path in [baseline, comparison.stress] %}<td class="num">{{ amount(path.final_value_amount) }}</td>{% endfor %}</tr>
+<tr><th scope="row">Against desired legacy (future money)</th>{% for path in [baseline, comparison.stress] %}<td>{% if plan.terminal_legacy_target_amount is none %}No legacy target{% elif path.legacy_target_gap_amount is none %}Missing target FX — comparison withheld{% elif path.legacy_target_gap_amount == 0 %}Exactly the target{% else %}{{ amount(path.legacy_target_gap_amount|abs) }} {{ 'above' if path.legacy_target_gap_amount > 0 else 'below' }} target{% endif %}{% if path.legacy_target_status == 'stale' %} · stale target FX{% endif %}</td>{% endfor %}</tr>
+</tbody></table></div>
+{% if scenario_chart %}
+<h3>Ending capital by age</h3>
+<div class="chart-box" data-chart="scenario-ending"
+     data-labels="{{ scenario_chart.labels|tojson|forceescape }}"
+     data-baseline="{{ scenario_chart.baseline_values|tojson|forceescape }}"
+     data-stress="{{ scenario_chart.stress_values|tojson|forceescape }}"
+     data-currency="{{ scenario_chart.currency }}" data-money-places="{{ scenario_chart.currency|currency_places }}"><canvas aria-hidden="true"></canvas></div>
+<p class="hint">Both lines trace ending capital after each year's spending and returns. The annual tables below carry the same figures and are the chart's equivalent.</p>
+{% endif %}
+<p class="hint">More ending capital is not automatically better. Returns happen after spending, so an early loss can affect later payments. These deterministic paths do not estimate a chance of success. The legacy target compares ending money; it does not control spending.</p>
+</section>
+<section class="card stack" aria-labelledby="frozen-assumptions-heading"><h2 id="frozen-assumptions-heading">Shared assumptions and starting sources</h2>
+<p>Plan base date {{ plan.base_date|display_date }}; age {{ baseline.assumption.current_age_years }} at the portfolio date; spending begins at age {{ baseline.assumption.withdrawal_start_age_years }}; end boundary age {{ baseline.assumption.final_age_years }}. A full annual payment occurs at each eligible anniversary, without proration.</p>
+<p>Core {{ amount(plan.core_amount) }} with {{ plan.core_inflation_decimal|percentage_amount(2) }}% inflation; target Flexible {{ amount(plan.flexible_amount) }} with {{ plan.flexible_inflation_decimal|percentage_amount(2) }}% inflation. Purchasing power uses that Flexible inflation from the plan base date. Future FX stays constant. Income below is spendable after owner-estimated tax; no separate withdrawal-tax or fee calculation is added.</p>
+<p>Opening negative cash {{ amount(baseline.opening_negative_cash_amount) }} is repaid before spending. Included non-Project capital remains modelled even when restricted. Account access and FD maturity independently control withdrawals; available sources are used Cash → Now → Bridge → Growth. Mixed holdings sell proportionally.</p>
+<details class="disclosure"><summary>Starting capital, access and source dates</summary>
+<p>Projects excluded from this projection: {{ amount(baseline.projects_included_amount) }}.</p>
+<ul>{% for source in comparison.basis._inputs.pools %}<li>{{ source.source_name }} — {{ source.source_kind }}, {{ source.bucket_code or 'Cash' }}; available {% if source.available_from_age > baseline.assumption.final_age_years %}beyond the plan horizon{% else %}from age {{ source.available_from_age }}{% endif %}. {% for role, value in source.roles.items() %}{{ role|capitalize }} {{ amount(value) }}{% if not loop.last %}; {% endif %}{% endfor %}</li>{% endfor %}</ul>
+{% for kind, sources in comparison.source_evidence.items() %}<h3>{{ 'Holdings' if kind == 'holdings' else 'Cash confirmations' }}</h3><ul>{% for source in sources %}<li>{{ source.account_name }}{% if source.instrument_name %} · {{ source.instrument_name }}{% endif %}: {{ money({'amount': source.native_amount, 'currency': source.native_currency}) }} · {{ source.source_mode or 'Source unavailable' }} · value {{ (source.value_date or source.checkpoint_date)|display_date if (source.value_date or source.checkpoint_date) else "No dated value" }}{% if source.latest_cash_effect_date %}, latest cash effect {{ source.latest_cash_effect_date|display_date }}{% endif %} · FX {{ source.fx_date|display_date if source.fx_date else "Same currency / no quote" }} · {{ source.status }}.</li>{% endfor %}</ul>{% endfor %}
+</details>
+<details class="disclosure"><summary>Return assumptions and spending rules</summary>
+<ul>{% for role, value in baseline.role_returns.items() %}<li>{{ role|capitalize }} baseline return: {{ value|percentage_amount(2) }}% nominal per year in {{ baseline.reporting_currency }}.</li>{% endfor %}</ul>
+{% if baseline.spending_policy == 'guardrails' %}<p>Full desired-budget portfolio need divided by positive starting capital triggers the rule: below {{ plan.lower_rate_decimal|percentage_amount(2) }}%, allow {{ plan.lower_multiplier_decimal|percentage_amount(2) }}% of Flexible; from that threshold to below {{ plan.upper_rate_decimal|percentage_amount(2) }}%, allow {{ plan.middle_multiplier_decimal|percentage_amount(2) }}%; at or above the second threshold, allow {{ plan.upper_multiplier_decimal|percentage_amount(2) }}%. Permission still requires available resources. These thresholds are not safety ratings.</p>{% else %}<p>Attempt full Core and target Flexible spending each retirement year, limited by available resources.</p>{% endif %}
+<h3>Frozen income assumptions</h3><ul>{% for income in comparison.income_assumptions %}<li>{{ income.name }}: {{ money({'amount': income.annual_amount, 'currency': income.currency_code}) }} per eligible year, {{ income.inflation_decimal|percentage_amount(2) }}% annual inflation; {{ income.start_date|display_date }} through {{ income.end_date|display_date if income.end_date else 'no end date' }} inclusive. Inflation compounds from the first eligible date. No pre-retirement income is modelled.</li>{% else %}<li>No planned income.</li>{% endfor %}</ul>
+<p>Calculation record: {{ comparison.engine_version }}, policy {{ comparison.policy_version }}.</p>
+</details>
+</section>
+{% set role_order = ['equity', 'income', 'liquidity', 'alternatives'] %}
+{% set entered_count = comparison.annual_returns|length %}
+{% for key, title in [('baseline', 'Baseline annual path'), ('stress', 'Entered annual return path')] %}{% set path = comparison[key] %}
+<section class="card" aria-labelledby="{{ key }}-heading"><h2 id="{{ key }}-heading">{{ title }}</h2>
+{% if key == 'baseline' %}<p>Constant saved role returns every year. Amounts are nominal in {{ baseline.reporting_currency }}.</p>
+{% else %}<p>Your entered returns apply to {{ 'year 1' if entered_count == 1 else 'years 1–' ~ entered_count }}; later years resume the baseline returns. Amounts are nominal in {{ baseline.reporting_currency }}.</p>{% endif %}
+<div class="table-wrap" tabindex="0" role="region" aria-label="{{ title }} — annual summary"><table class="data path-table">
+<caption>Per-role nominal returns (%) and actual annual payments in {{ baseline.reporting_currency }}</caption>
+<thead><tr><th scope="col">Age · boundary</th>{% for role in role_order %}<th scope="col" class="num">{{ role|capitalize }}</th>{% endfor %}<th scope="col" class="num">Core paid</th><th scope="col" class="num">Flexible paid</th><th scope="col" class="num">Ending capital</th></tr></thead>
+<tbody>{% for year in path.years %}<tr{% if key == 'stress' and loop.index <= entered_count %} class="entered-year"{% endif %}>
+<th scope="row">{{ year.age }} <span class="muted">· {{ year.boundary_date|display_date }}</span>{% if year.core_shortfall_amount %} {{ badge("warning", "Core shortfall") }}{% endif %}{% if key == 'stress' and loop.index <= entered_count %}<br><span class="meta">entered return</span>{% endif %}</th>
+{% for role in role_order %}<td class="num">{{ year.role_returns[role]|percentage_amount(2) }}%</td>{% endfor %}
+<td class="num">{{ amount(year.core_paid_amount) }}</td>
+<td class="num">{{ amount(year.flexible_paid_amount) }}</td>
+<td class="num">{{ amount(year.ending_value_amount) }}</td>
+</tr>{% endfor %}</tbody></table></div>
+<h3>Per-year withdrawals, income and sources</h3>
+<p class="hint">Open a year for actual source withdrawals, income evidence and the return applied after spending. The table above carries the same per-year returns and payments.</p>
+{% for year in path.years %}
+<details class="year-detail"><summary>Age {{ year.age }} · {{ year.boundary_date|display_date }} · Core unpaid {{ amount(year.core_shortfall_amount) }} · Flexible paid {{ amount(year.flexible_paid_amount) }} · ending {{ amount(year.ending_value_amount) }}</summary>
+<dl class="kv"><dt>Starting capital</dt><dd>{{ amount(year.starting_value_amount) }}</dd><dt>Core target / paid / unpaid</dt><dd>{{ amount(year.core_target_amount) }} / {{ amount(year.core_paid_amount) }} / {{ amount(year.core_shortfall_amount) }}</dd><dt>Flexible target / allowed / paid</dt><dd>{{ amount(year.flexible_target_amount) }} / {{ amount(year.flexible_allowed_amount) }} / {{ amount(year.flexible_paid_amount) }}</dd><dt>Flexible reduction from rules / insufficient available money</dt><dd>{{ amount(year.flexible_policy_cut_amount) }} / {{ amount(year.flexible_resource_shortfall_amount) }}</dd><dt>Withdrawals from Equity-exposed sources (whole mixed holdings)</dt><dd>{{ amount(year.equity_reliance_amount) }}</dd><dt>Simulated return after spending</dt><dd>{{ amount(year.return_amount) }}</dd></dl>
+<ul>{% for role, value in year.role_returns.items() %}<li>{{ role|capitalize }} return {{ value|percentage_amount(2) }}%</li>{% endfor %}</ul>
+<h4>Income available this year</h4><ul>{% for income in year.income_sources %}<li>{{ income.name }}: {{ amount(income.amount) }} ({{ money({'amount': income.native_amount, 'currency': income.currency}) }}; FX {{ income.fx_date|display_date if income.fx_date else "same currency" }}, {{ income.status }}).</li>{% else %}<li>No planned income payment.</li>{% endfor %}</ul>
+<h4>Sources used for withdrawals and opening obligations</h4><ul>{% for source in year.applications %}<li>{{ source.source_name }}: {{ amount(source.amount) }}{% if source.equity_exposed %} · Equity-exposed holding{% endif %}</li>{% else %}<li>No portfolio sources used.</li>{% endfor %}</ul>
+</details>
+{% endfor %}</section>
+{% endfor %}
+{% endblock %}

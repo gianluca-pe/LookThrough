@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, wt_field %}
+{% block title %}Retirement scenarios{% endblock %}
+{% block heading %}Retirement scenarios{% endblock %}
+{% block content %}
+<p class="lede">How would different early returns change your retirement spending and the money remaining?</p>
+<p>Save a named comparison of your adopted plan against an annual return path you enter. Both paths start from your portfolio on the date you choose, and keep the same spending approach, income, inflation, account access and end age.</p>
+<p><a href="{{ url_for('retirement.index') }}">Back to Retirement</a></p>
+{% if has_plan %}
+{% set baseline_returns = [plan.equity_return_decimal|percentage_amount(None), plan.income_return_decimal|percentage_amount(None), plan.liquidity_return_decimal|percentage_amount(None), plan.alternatives_return_decimal|percentage_amount(None)] %}
+<section class="card stack" aria-labelledby="new-comparison-heading">
+<h2 id="new-comparison-heading">Compare an early-return path</h2>
+<p>Enter one line per consecutive projection year, starting at the portfolio date: <strong>Equity, Income, Liquidity, Alternatives</strong>, in that order, separated by commas, without % signs. Every line needs all four numbers; zero means no return. An empty year before an entered year must be completed or explicitly removed; it never shifts later returns earlier.</p>
+<p>The first year's return happens <em>after</em> that year's beginning-of-year spending, and the first year can start before retirement. Years beyond your last entered line resume your saved plan's constant nominal returns: Equity {{ baseline_returns[0] }}% · Income {{ baseline_returns[1] }}% · Liquidity {{ baseline_returns[2] }}% · Alternatives {{ baseline_returns[3] }}%. Changing returns leaves inflation, income and your spending approach unchanged.</p>
+<p class="hint">Enter an early downturn to see what it does — no market path or probability is supplied. To test ordering, save another comparison with the same returns in a different order while the starting inputs remain unchanged.</p>
+{{ error_summary(form) }}
+<form method="post" class="stack" novalidate>
+{{ form.hidden_tag() }}{% set focus = namespace(used=false) %}
+{% for name in ['name', 'as_of_date', 'return_path'] %}{% set field = form[name] %}
+{{ wt_field(field, required=true, autofocus=(true if field.errors and not focus.used else false), hint=("One row per year; four comma-separated percentages in the labelled order. The first row applies after spending at the starting portfolio date." if name == "return_path" else none), extra_attrs=({"data_return_path": "true", "data_roles": '["Equity", "Income", "Liquidity", "Alternatives"]', "data_baseline": baseline_returns|tojson|forceescape} if name == "return_path" else {})) }}
+{% if field.errors %}{% set focus.used=true %}{% endif %}
+{% endfor %}
+<p class="hint">Saving freezes the inputs and both annual results. It does not adopt assumptions or change Overview. Each new comparison captures the portfolio and adopted plan at save time; saved comparisons are not updated by later edits.</p>
+<div class="form-actions">{{ form.save_comparison(class_="btn btn-primary") }}</div>
+</form>
+</section>
+{% else %}<p>Adopt a Core/Flexible plan in <a href="{{ url_for('retirement.index') }}">Retirement</a> before creating a comparison. Existing saved comparisons remain available below.</p>{% endif %}
+<section class="card" aria-labelledby="saved-comparisons-heading"><h2 id="saved-comparisons-heading">Saved comparisons</h2>
+{% if scenarios %}<ul>{% for row in scenarios %}<li><a href="{{ url_for('retirement.scenario', scenario_id=row.id) }}">{{ row.name }}</a> · portfolio {{ row.as_of_date|display_date }} · saved {{ row.created_at|display_date }}</li>{% endfor %}</ul>
+{% else %}<p>No comparisons saved yet.</p>{% endif %}</section>
+{% endblock %}

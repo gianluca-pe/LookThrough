@@ -1,0 +1,420 @@
+{% extends "base.html" %}
+{% from "_macros.html" import as_of_form, money, money_missing, badge, values_update_url, portfolio_subtotals, currency_datalist %}
+{% from "overview/_attention_items.html" import attention_list_item with context %}
+{% from "overview/_funding_periods.html" import funding_disclosure, funding_table, funding_visual with context %}
+{% block title %}Overview{% endblock %}
+{% block heading %}Overview{% endblock %}
+{% block as_of %}
+<span class="as-of">Values as of {{ summary.as_of_date|display_date }} · reporting in {{ summary.reporting_currency }}</span>
+{% endblock %}
+{% block scripts %}
+{# Vendored Chart.js (no CDN or chart network requests) plus the chart
+   initializer. Progressive enhancement only: without JavaScript the tables
+   below remain the full equivalent. #}
+<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script>
+<script src="{{ static_url('js/charts.js') }}" defer></script>
+{% endblock %}
+{% block content %}
+
+{{ as_of_form("overview.show", summary.as_of_date, extra_params={"ccy": summary.reporting_currency}) }}
+
+<form class="asof-form" method="get" action="{{ url_for('overview.show') }}">
+  <label for="ccy">Reporting currency</label>
+  <select id="ccy" name="ccy"
+         {% if reporting_currency_error %}aria-invalid="true" aria-describedby="ccy-error ccy-hint" autofocus
+         {% else %}aria-describedby="ccy-hint"{% endif %}>
+    {% for code in reporting_currency_choices %}<option value="{{ code }}"{% if code == summary.reporting_currency %} selected{% endif %}>{{ code }}</option>{% endfor %}
+  </select>
+  <input type="hidden" name="as_of" value="{{ summary.as_of_date.isoformat() }}">
+  <button class="btn" type="submit">Apply</button>
+  <span class="hint" id="ccy-hint">Account and holding currencies, plus your saved default. Switches this view only — your saved default and annual spending currency are unchanged.</span>
+  {% if reporting_currency_error %}
+  <p class="field-error" id="ccy-error" role="alert">
+    <a href="#ccy">Reporting currency</a>: {{ reporting_currency_error }}
+    Showing the saved default, {{ summary.reporting_currency }}.
+  </p>
+  {% endif %}
+</form>
+
+<section class="card" aria-labelledby="total-heading">
+  <h2 class="card-label" id="total-heading">
+    {{- "Known included portfolio value" if summary.included_status == "partial" else "Included portfolio value" -}}
+  </h2>
+  {% if summary.included_reporting_amount is not none %}
+  <div class="headline">{{ money({"amount": summary.included_reporting_amount, "currency": summary.reporting_currency}) }}</div>
+  {% else %}
+  <div class="headline">{{ money_missing() }}</div>
+  {% endif %}
+  {{ portfolio_subtotals(summary) }}
+  <p class="meta">
+    {% if summary.included_status == "partial" %}
+      {{ badge("missing", "Partial") }}
+      Known subtotal for {{ summary.total_reporting_valued_count }} of {{ summary.total_item_count }} positions and cash balances —
+      the rest are excluded, never counted as zero.
+    {% elif summary.included_status == "missing" %}
+      {{ badge("missing", "Missing") }}
+      Nothing has a reporting value as of this date. Add prices, statement values, cash confirmations, and FX on the Values step.
+    {% elif summary.included_status == "stale" %}
+      {{ badge("stale", "Stale") }}
+      All {{ summary.position_count }} positions{% if summary.cash_balance_count %} and {{ summary.cash_balance_count }} cash balances{% endif %} valued; at least one source is older than its freshness setting.
+    {% elif summary.included_status == "empty" %}
+      No positions or cash balances as of this date.
+    {% else %}
+      All {{ summary.position_count }} positions{% if summary.cash_balance_count %} and {{ summary.cash_balance_count }} cash balances{% endif %} valued and current.
+    {% endif %}
+  </p>
+</section>
+
+{% if summary.role_classified_denominator_amount or summary.role_unclassified_investment_amount %}
+<section class="card" aria-labelledby="role-allocation-heading">
+  <h2 id="role-allocation-heading">Asset allocation</h2>
+  {% if summary.role_classified_denominator_amount %}
+  {% if allocation_chart %}
+  <div class="chart-box" data-chart="allocation"
+       data-labels="{{ allocation_chart.labels|tojson|forceescape }}"
+       data-actual="{{ allocation_chart.actual|tojson|forceescape }}"
+       {% if allocation_chart.target_min is defined %}data-target-min="{{ allocation_chart.target_min|tojson|forceescape }}" data-target-max="{{ allocation_chart.target_max|tojson|forceescape }}"{% endif %}>
+    <canvas aria-hidden="true"></canvas>
+  </div>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th scope="col">Role</th><th scope="col" class="num">Included</th><th scope="col" class="num">% of classified</th>{% if summary.allocation_targets_complete %}<th scope="col" class="num">Target range</th><th scope="col">Compared to target</th>{% endif %}<th scope="col" class="num">Accessible now</th></tr>
+      </thead>
+      <tbody>
+        {% for row in summary.role_allocation if row.included_reporting_amount or row.range_state is not none %}
+        <tr>
+          <td>{{ economic_role_labels[row.code] }}</td>
+          <td class="num">{{ money({"amount": row.included_reporting_amount, "currency": summary.reporting_currency}) }}</td>
+          <td class="num">{% if row.included_percentage is not none %}{{ row.included_percentage|percentage_amount(1) }}%{% else %}—{% endif %}</td>
+          {% if summary.allocation_targets_complete %}
+          <td class="num">{{ row.target_minimum_decimal|percentage_amount(1) }}–{{ row.target_maximum_decimal|percentage_amount(1) }}%</td>
+          <td>
+            {%- if row.range_state == "within" %}Within range
+            {%- elif row.range_state in ["below", "above"] %}
+            {{ badge("warning", "Below" if row.range_state == "below" else "Above") }}
+            gap {{ money({"amount": row.gap_to_range_amount, "currency": summary.reporting_currency}) }}
+            <span class="meta">({{ row.gap_to_range_percentage|percentage_amount(1) }} pt)</span>
+            {%- else %}{{ money_missing() }}{% endif %}
+          </td>
+          {% endif %}
+          <td class="num">{{ money({"amount": row.accessible_reporting_amount, "currency": summary.reporting_currency}) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th scope="row">Total</th>
+          <td class="num">
+            {%- if summary.included_reporting_amount is not none %}
+            {{ money({"amount": summary.included_reporting_amount, "currency": summary.reporting_currency}) }}
+            {%- else %}{{ money_missing() }}{% endif %}
+          </td>
+          <td class="num">100.0%</td>
+          {% if summary.allocation_targets_complete %}<td class="num">—</td><td>—</td>{% endif %}
+          <td class="num">
+            {%- if summary.accessible_reporting_amount is not none %}
+            {{ money({"amount": summary.accessible_reporting_amount, "currency": summary.reporting_currency}) }}
+            {%- else %}{{ money_missing() }}{% endif %}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <p class="meta">Percentages of the classified included value
+    {{ money({"amount": summary.role_classified_denominator_amount, "currency": summary.reporting_currency}) }}.
+    {%- if summary.role_cash_amount %} Cash
+    {{ money({"amount": summary.role_cash_amount, "currency": summary.reporting_currency}) }}
+    counts as Liquidity.{% endif %}
+    Rows and percentages are individually rounded; the Total row matches the headline included value.</p>
+  {% endif %}
+  {% if summary.allocation_targets_complete and summary.allocation_target_calculation_complete %}
+  <p class="meta">Gaps show the distance to your target range — not advice.</p>
+  {% elif summary.allocation_targets_complete %}
+  <p class="meta">Comparison to your target ranges is withheld while some included value is unclassified or unvalued — no result is invented from partial data.</p>
+  {% else %}
+  <p class="meta">No allocation target ranges set. <a href="{{ url_for('planning.targets') }}">Set target ranges →</a> They live with Portfolio details in Settings, so Overview links there instead of embedding another form.</p>
+  {% endif %}
+  {% if summary.role_unclassified_investment_amount %}
+  <p class="meta"><strong>Unclassified:</strong>
+    {{ money({"amount": summary.role_unclassified_investment_amount, "currency": summary.reporting_currency}) }}
+    of included value sits outside those percentages — never spread across roles silently.
+    <a href="{{ url_for('instruments.index') }}">Classify instruments →</a></p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card" aria-labelledby="funding-heading">
+  <h2 id="funding-heading">Ten-year funding · today's money</h2>
+  {% if funding_chart %}{{ funding_visual(funding, funding_chart) }}{% endif %}
+  <details id="funding-detail"{% if not funding.periods %} open{% endif %}>
+  <summary>Funding detail and assumptions</summary>
+  <p>Do your Now and Bridge reserves cover your chosen spending for the first ten years without drawing on Growth?</p>
+  <p><strong>All amounts use {{ funding.as_of_date|display_date }} purchasing power.</strong> Annual spending stays constant: three years for Now and seven for Bridge.</p>
+  <p class="meta">
+    {{ "Adopted Core spending" if funding.retirement_plan else "Annual spending (no Core/Flexible split)" }}
+    {%- if funding.spending.native_amount is not none and funding.spending.native_currency %}
+      {{ money({"amount": funding.spending.native_amount, "currency": funding.spending.native_currency}) }}
+      {%- if funding.spending.native_currency != funding.reporting_currency
+             and funding.spending.reporting_amount is not none %}
+        ≈ {{ money({"amount": funding.spending.reporting_amount, "currency": funding.reporting_currency}) }}
+        · 1 {{ funding.spending.native_currency }} = {{ funding.spending.fx_rate|trim_decimal }} {{ funding.reporting_currency }}
+        · {{ funding.spending.fx_path|join(" → ") }} · {{ funding.spending.fx_date|display_date }}
+      {%- endif %}
+      {%- if funding.spending.status == "stale" %}
+      {{ badge("stale", "Stale") }} the spending FX rate is older than its freshness setting.
+      {%- elif funding.spending.status == "missing" %}
+      {{ badge("missing", "Missing") }} {{ funding.spending.missing_reason }}.
+      {%- endif %}
+    {%- else %}
+      {{ badge("missing", "Missing") }} {{ funding.spending.missing_reason }} —
+      set it in <a href="{{ url_for('setup.show', step='portfolio') }}">Portfolio details →</a>
+    {%- endif %}
+    / year, held constant for this check.
+  </p>
+  <p class="meta">This assumes assets keep pace with inflation (zero real return). For investment growth, future income and projected balances, use the <a href="{{ url_for('retirement.index') }}">Retirement planner →</a>.</p>
+  {% if funding.periods %}
+  <p class="meta">
+    {%- if funding.status == "current" %}Calculated from current known sources.
+    {%- elif funding.status == "stale" %}{{ badge("stale", "Stale") }} At least one source is older than its freshness setting.
+    {%- elif funding.status == "partial" %}{{ badge("missing", "Partial") }} Some sources are unknown — all reserve amounts, surplus/gaps and Growth use below describe known sources only. Overall coverage cannot be confirmed; missing values are never counted as zero.
+    {%- endif %}
+  </p>
+  {% set assessment = funding.assessment %}
+  <div id="funding-coverage">
+    {% if not funding.calculation_complete %}
+    <p><strong>First-ten-year coverage is incomplete.</strong> The known-source calculation follows below.</p>
+    {% elif assessment.covered_without_growth %}
+    <p><strong>Now, Bridge and cash cover both periods without Growth withdrawals</strong> under this reserve calculation.</p>
+    {% else %}
+    <p><strong>Now, Bridge and cash do not cover both periods on their own.</strong>
+      {% if assessment.growth_applied_amount %}These spending reserves need {{ money({"amount": assessment.growth_applied_amount, "currency": funding.reporting_currency}) }} from Growth.{% endif %}
+      {% if assessment.shortfall_amount %}A further {{ money({"amount": assessment.shortfall_amount, "currency": funding.reporting_currency}) }} remains uncovered after eligible Growth is applied.{% endif %}</p>
+    {% endif %}
+    <dl class="kv">
+      <dt>Years 1–10 required</dt><dd>{{ money({"amount": assessment.required_amount, "currency": funding.reporting_currency}) }}</dd>
+      <dt>Cash, Now and Bridge eligible by year 10</dt><dd>{{ money({"amount": assessment.earlier_reserve_amount, "currency": funding.reporting_currency}) }}</dd>
+      <dt>Applied from those reserves</dt><dd>{{ money({"amount": assessment.earlier_reserve_applied_amount, "currency": funding.reporting_currency}) }}</dd>
+      <dt>Applied from Growth</dt><dd>{{ money({"amount": assessment.growth_applied_amount, "currency": funding.reporting_currency}) }}</dd>
+      <dt>Uncovered after Growth</dt><dd>{{ money({"amount": assessment.shortfall_amount, "currency": funding.reporting_currency}) }}</dd>
+    </dl>
+  </div>
+  {{ funding_table(funding) }}
+  <p class="meta">Changing the annual spending amount changes the required reserves; changing bucket assignments changes where coverage comes from. A surplus is capital above this spending requirement.</p>
+  {% if funding.cash_deficit_amount %}
+  <p class="meta">Sourced cash is negative by {{ money({"amount": funding.cash_deficit_amount, "currency": funding.reporting_currency}) }} — that deficit is added to the Now requirement.</p>
+  {% endif %}
+  {% if funding.unknown_role_dependency_total_amount %}
+  <p class="meta">{{ money({"amount": funding.unknown_role_dependency_total_amount, "currency": funding.reporting_currency}) }} of the funded amounts relies on holdings with no role set.</p>
+  {% endif %}
+  <h3>Unallocated capital · today's money</h3>
+  <dl class="kv" id="funding-remainders">
+    {% for source in assessment.remainder_sources %}
+    <dt>{{ source.code|capitalize if source.code else "Cash" }}</dt><dd>{{ money({"amount": source.amount, "currency": funding.reporting_currency}) }}</dd>
+    {% endfor %}
+    <dt>Growth</dt><dd>{{ money({"amount": assessment.growth_remaining_amount, "currency": funding.reporting_currency}) }}</dd>
+    {% if assessment.late_earlier_reserve_amount %}
+    <dt>Now / Bridge deposits maturing after year 10</dt><dd>{{ money({"amount": assessment.late_earlier_reserve_amount, "currency": funding.reporting_currency}) }} — excluded from eligible reserves</dd>
+    {% endif %}
+  </dl>
+  <p class="meta">Current capital not needed for these spending reserves. These figures are in the same purchasing power as the budget above; they are not projected year-ten balances. A later surplus cannot fill an earlier period's gap.</p>
+  {{ funding_disclosure(funding) }}
+  <details class="meta">
+    <summary>Spending, access and bucket assumptions</summary>
+    <p>Allocation percentages use positive starting cash plus the current Now, Bridge and Growth values included in this reserve model, after account access and excluding Projects. Term deposits remain in that starting-capital total even when maturity makes them unavailable for an early bucket. An existing cash deficit increases Now's requirement instead of reducing this denominator. Incomplete sources or zero capital withhold percentages.</p>
+    <p>Accessible cash is assigned once: Now first, then Bridge, up to each requirement. Any excess stays in unused cash. After cash, unused earlier buckets are applied before the period's own bucket and then later buckets. No holding is reclassified.</p>
+    <p>Values reflect your portfolio share and present account access. Fixed deposits qualify only in the period containing their maturity or a later period. This compares whole periods; it does not test each annual payment date within them or assume future account access.</p>
+    <p>The Core budget at the selected date is held constant for all ten years; Flexible spending and future income are excluded. Without an adopted plan, the unsplit annual budget is used and labelled explicitly. Real asset values are also held constant before spending; inflation adds nothing to either side of this reserve check. Your saved inflation and return assumptions continue to apply in the Retirement planner. Projects stay excluded{% if funding.projects_included_amount %} ({{ money({"amount": funding.projects_included_amount, "currency": funding.reporting_currency}) }} included value){% endif %}.</p>
+    <p>Liquidity and Income are asset roles; Now and Bridge are funding buckets. A bucket can contain Equity-exposed holdings. The source detail reports that exposure without splitting mixed holdings into separate investments.</p>
+  </details>
+  {% else %}
+  <p class="meta">{{ badge("missing", "Missing") }} No period results — nothing is invented from missing assumptions.
+    {%- if funding.retirement_plan and funding.spending.reporting_amount is none %}
+    <a href="{{ url_for('retirement.index', as_of=summary.as_of_date.isoformat()) }}">Review plan date and currency →</a>
+    {%- elif funding.spending.native_currency %}
+    <a href="{{ values_update_url('fx', base_currency=funding.spending.native_currency, quote_currency=funding.reporting_currency) }}">Update →</a>
+    {%- endif %}</p>
+  {% endif %}
+  </details>
+</section>
+
+{% if summary.bucket_classified_denominator_amount or summary.bucket_unclassified_investment_amount or summary.bucket_unassigned_cash_amount %}
+<section class="card" aria-labelledby="bucket-allocation-heading">
+  <h2 id="bucket-allocation-heading">FIRE buckets</h2>
+  {% if summary.bucket_classified_denominator_amount or summary.bucket_unassigned_cash_amount %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th scope="col">Bucket</th><th scope="col" class="num">Included</th><th scope="col" class="num">% of bucketed</th><th scope="col" class="num">Accessible now</th></tr>
+      </thead>
+      <tbody>
+        {% if summary.bucket_unassigned_cash_amount %}
+        <tr>
+          <td>Cash</td>
+          <td class="num">{{ money({"amount": summary.bucket_unassigned_cash_amount, "currency": summary.reporting_currency}) }}</td>
+          <td class="num">—</td>
+          <td class="num">{{ money({"amount": summary.bucket_unassigned_accessible_cash_amount, "currency": summary.reporting_currency}) }}</td>
+        </tr>
+        {% endif %}
+        {% for row in summary.bucket_allocation %}
+        <tr>
+          <td>{{ fire_bucket_labels[row.code] }}</td>
+          <td class="num">{{ money({"amount": row.included_reporting_amount, "currency": summary.reporting_currency}) }}</td>
+          <td class="num">{% if row.included_percentage is not none %}{{ row.included_percentage|percentage_amount(1) }}%{% else %}—{% endif %}</td>
+          <td class="num">{{ money({"amount": row.accessible_reporting_amount, "currency": summary.reporting_currency}) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th scope="row">Total</th>
+          <td class="num">
+            {%- if summary.included_reporting_amount is not none %}
+            {{ money({"amount": summary.included_reporting_amount, "currency": summary.reporting_currency}) }}
+            {%- else %}{{ money_missing() }}{% endif %}
+          </td>
+          <td class="num">{%- if summary.bucket_classified_denominator_amount %}100.0%{% else %}—{% endif %}</td>
+          <td class="num">
+            {%- if summary.accessible_reporting_amount is not none %}
+            {{ money({"amount": summary.accessible_reporting_amount, "currency": summary.reporting_currency}) }}
+            {%- else %}{{ money_missing() }}{% endif %}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% if summary.bucket_classified_denominator_amount %}
+  <p class="meta">Percentages of the bucket-assigned included value
+    {{ money({"amount": summary.bucket_classified_denominator_amount, "currency": summary.reporting_currency}) }}.
+    Rows and percentages are individually rounded; the Total row matches the headline included value.</p>
+  {% endif %}
+  {% if summary.bucket_unassigned_cash_amount %}
+  <p class="meta">Cash has no manually assigned horizon; the funding view applies accessible cash across periods.</p>
+  {% endif %}
+  {% endif %}
+  {% if summary.bucket_classified_denominator_amount %}
+  <p class="meta">A bucket is a funding horizon, not a spending allowance: more value in Bridge does not mean more spending during Bridge. Projects stays in net worth and in the asset allocation above, but is excluded from ten-year funding.</p>
+  {% endif %}
+  {% if summary.bucket_unclassified_investment_amount %}
+  <p class="meta"><strong>No bucket set:</strong>
+    {{ money({"amount": summary.bucket_unclassified_investment_amount, "currency": summary.reporting_currency}) }}
+    of included investments. <a href="{{ url_for('instruments.index') }}">Classify instruments →</a></p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card" aria-labelledby="institution-totals-heading">
+  <h2 id="institution-totals-heading">Value by institution</h2>
+  {% if summary.reporting_totals_by_institution %}
+  {% if institution_chart %}
+  <div class="chart-box" data-chart="value-breakdown"
+       data-labels="{{ institution_chart.labels|tojson|forceescape }}"
+       data-values="{{ institution_chart['values']|tojson|forceescape }}"
+       data-currency="{{ institution_chart.currency }}" data-money-places="{{ institution_chart.currency|currency_places }}"
+       data-title="Included value by institution">
+    <canvas aria-hidden="true"></canvas>
+  </div>
+  {% endif %}
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th scope="col">Institution</th><th scope="col" class="num">Included in {{ summary.reporting_currency }}</th><th scope="col">Data state</th></tr></thead>
+    <tbody>{% for row in summary.reporting_totals_by_institution %}<tr>
+      <th scope="row">{{ row.institution_name }}</th>
+      <td class="num">{% if row.included_reporting_amount is not none %}{{ money({"amount": row.included_reporting_amount, "currency": summary.reporting_currency}) }}{% else %}{{ money_missing("incomplete") }}{% endif %}</td>
+      <td>{% if row.status == "partial" %}{{ badge("missing", "Partial") }} {{ row.reporting_valued_count }} of {{ row.item_count }} sources
+          {% elif row.status == "missing" %}{{ badge("missing", "Missing") }} no reporting value
+          {% elif row.status == "stale" %}{{ badge("stale", "Stale") }}
+          {% else %}Current{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="meta">Included values use the account shares you entered. Charts show only known reporting values; incomplete sources remain explicit in the table, never counted as zero.</p>
+  {% else %}<p>{{ money_missing("No eligible position or cash source as of this date.") }}</p>{% endif %}
+</section>
+
+<section class="card" aria-labelledby="currency-totals-heading">
+  <h2 id="currency-totals-heading">Value by currency</h2>
+  {% if summary.reporting_totals_by_currency %}
+  {% if currency_chart %}
+  <div class="chart-box" data-chart="value-breakdown"
+       data-labels="{{ currency_chart.labels|tojson|forceescape }}"
+       data-values="{{ currency_chart['values']|tojson|forceescape }}"
+       data-percentages="{{ currency_chart.percentages|tojson|forceescape }}"
+       data-currency="{{ currency_chart.currency }}" data-money-places="{{ currency_chart.currency|currency_places }}"
+       data-title="Included value by source currency">
+    <canvas aria-hidden="true"></canvas>
+  </div>
+  {% endif %}
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th scope="col">Currency</th><th scope="col" class="num">Gross native value</th><th scope="col" class="num">Included in {{ summary.reporting_currency }}</th><th scope="col" class="num">Share of known included value</th><th scope="col">Data state</th></tr></thead>
+    <tbody>{% for row in summary.reporting_totals_by_currency %}<tr>
+      <th scope="row">{{ row.native_currency }}</th>
+      <td class="num">{% if row.native_amount is not none %}{{ money({"amount": row.native_amount, "currency": row.native_currency}) }}{% else %}{{ money_missing("unavailable") }}{% endif %}</td>
+      <td class="num">{% if row.included_reporting_amount is not none %}{{ money({"amount": row.included_reporting_amount, "currency": summary.reporting_currency}) }}{% else %}{{ money_missing("incomplete") }}{% endif %}</td>
+      <td class="num">{% if row.included_percentage is not none %}{{ row.included_percentage|percentage_amount(1) }}%{% else %}—{% endif %}</td>
+      <td>{% if row.status == "partial" %}{{ badge("missing", "Partial") }} {{ row.reporting_valued_count }} of {{ row.item_count }} sources
+          {% elif row.status == "missing" %}{{ badge("missing", "Missing") }} reporting FX unavailable
+          {% elif row.status == "stale" %}{{ badge("stale", "Stale") }}
+          {% else %}Current{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="meta">Percentages use the known included value; missing reporting values are excluded, never counted as zero. This groups holdings by their source or valuation currency and does not infer the underlying economic currency exposure of global or mixed holdings. Gross native values reconcile source currencies before FX. Included values apply account share and convert through the same reporting path used by the portfolio headline.</p>
+  {% else %}<p>{{ money_missing("No eligible price, statement value, or cash source as of this date.") }}</p>{% endif %}
+</section>
+
+<section class="card" aria-labelledby="attention-heading">
+  <h2 id="attention-heading">Attention</h2>
+  {# Actionable items only: missing/stale value sources plus
+     classification gaps. Standing share/access facts are stated by the
+     headline sublines, not nagged here. #}
+  {% if summary.actionable_attention_items or funding.attention_items or relationship_attention_items %}
+  <ul class="attention-list">
+    {% for item in summary.actionable_attention_items %}{{ attention_list_item(item) }}{% endfor %}
+    {% for item in relationship_attention_items %}
+    <li>
+      <span class="marker" aria-hidden="true">!</span>
+      <span class="what">
+        <strong>Relationship minimum</strong> — {{ item.institution_name }}
+        {% if item.status == "cannot_determine" %}{{ badge("missing", "Cannot determine") }}
+        {% elif item.status == "stale" %}{{ badge("stale", "Stale") }}
+        {% elif item.state == "below_minimum" %}{{ badge("warning", "Below minimum") }}
+        {% elif item.state == "within_warning_buffer" %}{{ badge("warning", "Inside preferred buffer") }}{% endif %}
+        {%- if item.eligible_value_amount is not none %}
+        · eligible {{ money({"amount": item.eligible_value_amount, "currency": item.threshold_currency}) }}
+          vs minimum {{ money({"amount": item.threshold_amount, "currency": item.threshold_currency}) }}
+        {%- endif %}
+        <span class="meta"> · {{ item.detail }}</span>
+      </span>
+      <a href="{{ url_for('relationships.edit', institution_id=item.institution_id, as_of=summary.as_of_date.isoformat()) }}">Review minimum →</a>
+    </li>
+    {% endfor %}
+    {% for item in funding.attention_items %}
+    <li>
+      <span class="marker" aria-hidden="true">!</span>
+      <span class="what">
+        <strong>{{ "Missing" if item.kind == "missing" else "Stale" }}</strong> —
+        {% if item.subject_kind == "annual_inflation" %}Annual inflation assumption
+        {% else %}Annual spending FX{% endif %}
+        <span class="meta"> · {{ item.detail }}</span>
+      </span>
+      {% if item.action_kind == "set_funding_assumptions" %}
+      <a href="{{ url_for('planning.funding_assumptions') }}">Set assumptions →</a>
+      {% elif item.base_currency %}
+      <a href="{{ values_update_url("fx", base_currency=item.base_currency, quote_currency=item.quote_currency) }}">Update →</a>
+      {% else %}
+      <a href="{{ url_for('setup.show', step='portfolio') }}">Portfolio details →</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted small">No missing or stale values as of this date.</p>
+  {% endif %}
+</section>
+
+<p class="form-actions">
+  <a class="btn" href="{{ url_for('positions.holdings') }}">Holdings</a>
+  <a class="btn" href="{{ url_for('positions.show_values') }}">Update values</a>
+  <a class="btn btn-plain" href="{{ url_for('activity.history') }}">Activity history</a>
+</p>
+{{ currency_datalist() }}
+{% endblock %}

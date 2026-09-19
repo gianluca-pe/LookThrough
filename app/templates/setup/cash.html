@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Set up cash{% endblock %}
+{% block heading %}Add current cash{% endblock %}
+{% block content %}
+<div class="setup-layout">
+  {% include "setup/_steps.html" %}
+  <div class="setup-content">
+    <p class="muted small">Confirm each separately tracked cash balance from a broker statement.
+       Accounts whose cash is included in an aggregate value need no separate entry.</p>
+    {% for account in accounts %}
+    <section class="card" aria-labelledby="setup-cash-{{ account.id }}-heading">
+      <div class="card-head">
+        <h2 id="setup-cash-{{ account.id }}-heading">{{ account.name }}</h2>
+        <span class="meta">{{ account.institution_name }}</span>
+      </div>
+      {% set cash_rows = account.cash %}{% include "accounts/_cash_rows.html" %}
+      {% if account.cash_settlement_account_name %}
+      <p class="meta">Nothing to confirm here: activity cash settles in {{ account.cash_settlement_account_name }}.</p>
+      {% elif account.cash_tracking_mode == "separate_cash" %}
+      <p class="card-action"><a class="btn" href="{{ url_for('accounts.new_cash_confirmation', account_id=account.id, return_to='setup_accounts') }}">Set current cash balance</a></p>
+      {% else %}
+      <p class="meta">Nothing to enter: cash is already inside this account's aggregate statement value.</p>
+      {% endif %}
+    </section>
+    {% else %}
+    <section class="card" aria-label="Cash setup">
+      <p>No accounts yet. Add one on the
+         <a href="{{ url_for('setup.show', step='accounts') }}">Accounts step</a> first.</p>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

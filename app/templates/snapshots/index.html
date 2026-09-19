@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, empty_state, money, money_missing %}
+{% block title %}Portfolio snapshots{% endblock %}
+{% block heading %}Portfolio snapshots{% endblock %}
+{% block content %}
+<p>Frozen records of what LookThrough showed on a completed update date. Comparisons are not investment-performance calculations.</p>
+<p><a class="btn btn-primary" href="{{ url_for('snapshots.new') }}">Save snapshot</a></p>
+{% if snapshots %}
+<div class="table-wrap"><table class="data">
+  <thead><tr><th scope="col">As of</th><th scope="col">Status</th><th scope="col" class="num">Gross tracked value</th><th scope="col">Note</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+  <tbody>
+  {% for snapshot, payload in snapshots %}
+  <tr>
+    <th scope="row">{{ snapshot.as_of_date|display_date }}</th>
+    <td>{% if snapshot.summary_status != "current" %}{{ badge("stale" if snapshot.summary_status == "stale" else "missing", snapshot.summary_status|capitalize) }}{% else %}Current{% endif %}</td>
+    <td class="num">{% if payload.portfolio.gross_reporting_amount is not none %}{{ money({"amount": payload.portfolio.gross_reporting_amount, "currency": snapshot.reporting_currency_code}) }}{% else %}{{ money_missing() }}{% endif %}</td>
+    <td>{% if snapshot.note %}{{ snapshot.note|truncate(80) }}{% else %}—{% endif %}</td>
+    <td><a href="{{ url_for('snapshots.detail', snapshot_id=snapshot.id) }}">View <span class="sr-only">snapshot for {{ snapshot.as_of_date.isoformat() }}</span></a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+{{ empty_state(body="No snapshots yet. Save one after completing a routine update.") }}
+{% endif %}
+{% endblock %}

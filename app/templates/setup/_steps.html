@@ -1,0 +1,17 @@
+{# Resumable setup progress rail. Semantics:
+   current step via aria-current="step", completed steps announced,
+   steps with a URL remain linked; unmet prerequisites leave a plain label. #}
+<nav class="setup-rail" aria-label="Setup progress">
+  <ol class="setup-steps">
+    {% for step in setup.steps %}
+    <li class="step-{{ step.status }}"{% if step.status == "current" %} aria-current="step"{% endif %}>
+      {%- if step.url %}<a href="{{ step.url }}">{% endif %}
+      <span class="step-marker" aria-hidden="true">{{ "✓" if step.status == "complete" else loop.index }}</span>
+      <span class="step-label">{{ step.label }}</span>
+      {%- if step.url %}</a>{% endif %}
+      {%- if step.status == "complete" %}<span class="sr-only">(completed)</span>{% endif %}
+      {%- if step.status == "upcoming" %}<span class="sr-only">(upcoming)</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</nav>

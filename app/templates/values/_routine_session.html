@@ -1,0 +1,166 @@
+{% from "_macros.html" import badge, empty_state, error_summary, money_missing %}
+{# Routine grouped update session: one shared date,
+   four independently saved POST sections ordered to follow a banking
+   session, and the snapshot finish card. Maintenance pathway only; included
+   by values/index.html. The grid inputs are deliberately plain request.form
+   rows, not WTForms fields — errors are keyed by field name and values
+   repopulate from routine_values. #}
+{% set routine_first_error = (routine_errors.keys()|list|first) if routine_errors else "" %}
+<section class="card" aria-labelledby="routine-heading">
+  <h2 id="routine-heading">Routine update</h2>
+  <p>Use one date for this review. Enter only the rows that changed; every blank
+     row leaves its existing source untouched. Each section saves independently.</p>
+  {% if routine_errors %}
+  {% set routine_items = [] %}
+  {% for field_name, error in routine_errors.items() %}{% set _ = routine_items.append((field_name, none, error)) %}{% endfor %}
+  {{ error_summary(items=routine_items, heading_level=3) }}
+  {% endif %}
+  <form class="routine-date-form" method="get" action="{{ url_for('positions.show_values') }}" novalidate>
+    <div class="field">
+      <label for="effective_date">Update date <span class="req">(required)</span></label>
+      <input id="effective_date" name="as_of" type="date" required
+             value="{{ routine.as_of_date.isoformat() }}"
+             {% if routine_date_error %}aria-invalid="true" aria-describedby="routine-date-error routine-date-hint" autofocus
+             {% else %}aria-describedby="routine-date-hint"{% endif %}>
+      {% if routine_date_error %}<div class="field-error" id="routine-date-error">{{ routine_date_error }}</div>{% endif %}
+      <div class="hint" id="routine-date-hint">Reloads every section below; each section saves with this date.</div>
+    </div>
+    <div class="form-actions"><button class="btn" type="submit">Review this date</button></div>
+  </form>
+</section>
+
+{% macro routine_amount_input(row, label) %}
+  {% set field = row.field_name %}
+  <label class="sr-only" for="{{ field }}">{{ label }}</label>
+  <input id="{{ field }}" name="{{ field }}" type="text" inputmode="decimal"
+         class="money-input" value="{{ routine_values.get(field, '') }}"
+         {% if routine_errors.get(field) %}aria-invalid="true" aria-describedby="{{ field }}-error"{% endif %}
+         {% if routine_first_error == field %}autofocus{% endif %}>
+  {% if routine_errors.get(field) %}<div class="field-error" id="{{ field }}-error">{{ routine_errors[field] }}</div>{% endif %}
+{% endmacro %}
+
+{# Per-row checkboxes match the wt_checkbox output shape (input before label
+   inside.field-check) even though they are request.form rows, not WTForms
+   fields. #}
+{% macro routine_checkbox(field, label) %}
+  <div class="field field-check">
+    <input id="{{ field }}" name="{{ field }}" type="checkbox" value="1"
+           {% if routine_values.get(field) %}checked{% endif %}
+           {% if routine_errors.get(field) %}aria-invalid="true" aria-describedby="{{ field }}-error"{% endif %}
+           {% if routine_first_error == field %}autofocus{% endif %}>
+    <label for="{{ field }}">{{ label }}</label>
+    {% if routine_errors.get(field) %}<div class="field-error" id="{{ field }}-error">{{ routine_errors[field] }}</div>{% endif %}
+  </div>
+{% endmacro %}
+
+<section class="card" aria-labelledby="routine-cash-heading">
+  <h2 id="routine-cash-heading">Cash balances</h2>
+  <p class="meta">Ordered by institution and account to follow a banking session. Zero and negative balances are real entries; blank is unchanged.</p>
+  {% if routine.cash_rows %}
+  <form method="post" action="{{ url_for('positions.save_routine_cash') }}" novalidate>
+    {{ routine_form.hidden_tag() }}
+    <input type="hidden" name="effective_date" value="{{ routine.as_of_date.isoformat() }}">
+    <div class="table-wrap"><table class="data routine-table">
+      <thead><tr><th scope="col">Institution / account</th><th scope="col">Currency</th><th scope="col">Current source</th><th scope="col">New statement balance</th></tr></thead>
+      <tbody>{% for row in routine.cash_rows %}<tr>
+        <th scope="row">{{ row.institution_name }}<br><span class="muted">{{ row.account_name }}</span></th>
+        <td>{{ row.currency_code }}</td>
+        <td>{% if row.status == "missing" %}{{ badge("missing", "Missing") }} — no confirmation or activity{% else %}{{ row.currency_code }} {{ row.latest_amount|money_amount(currency=row.currency_code) }}{% if row.latest_date %}<br><span class="muted">confirmed {{ row.latest_date|display_date }}</span>{% else %}<br><span class="muted">calculated from activity</span>{% endif %}{% endif %}</td>
+        <td>{{ routine_amount_input(row, "New " ~ row.currency_code ~ " statement balance for " ~ row.account_name) }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Save entered cash balances</button></div>
+  </form>
+  {% else %}{{ empty_state(body="No separately tracked cash sleeves are current on this date.", standalone=false) }}{% endif %}
+</section>
+
+<section class="card" aria-labelledby="routine-statements-heading">
+  <h2 id="routine-statements-heading">Statement values</h2>
+  <p class="meta">Ordered by institution and account. One total value per current statement-tracked position; zero closes no position by itself and blank is unchanged.</p>
+  {% if routine.statement_rows %}
+  <form method="post" action="{{ url_for('positions.save_routine_statements') }}" novalidate>
+    {{ routine_form.hidden_tag() }}
+    <input type="hidden" name="effective_date" value="{{ routine.as_of_date.isoformat() }}">
+    <div class="table-wrap"><table class="data routine-table">
+      <thead><tr><th scope="col">Position</th><th scope="col">Account</th><th scope="col">Latest source</th><th scope="col">New value</th></tr></thead>
+      <tbody>{% for row in routine.statement_rows %}<tr>
+        <th scope="row">{{ row.instrument_name }}{% if row.instrument_type == "fixed_deposit" %}<br><span class="muted">Fixed deposit</span>{% endif %}</th>
+        <td>{{ row.institution_name }}<br><span class="muted">{{ row.account_name }}</span></td>
+        <td>{% if row.status == "stale" %}{{ badge("stale", "Stale") }} {% elif row.status == "missing" %}{{ badge("missing", "Missing") }} {% endif %}{% if row.latest_amount is not none %}{{ row.currency_code }} {{ row.latest_amount|money_amount(currency=row.currency_code) }} · {{ row.latest_date|display_date }}{% else %}{{ money_missing("no value yet") }}{% endif %}</td>
+        <td>{{ routine_amount_input(row, "New " ~ row.currency_code ~ " statement value for " ~ row.instrument_name) }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Save entered statement values</button></div>
+  </form>
+  {% else %}{{ empty_state(body="No statement-valued positions are current on this date.", standalone=false) }}{% endif %}
+</section>
+
+<section class="card" aria-labelledby="routine-prices-heading">
+  <h2 id="routine-prices-heading">Prices</h2>
+  <p class="meta">Ordered by holding institution and account. Each instrument still appears once and its price is reused across every listed location; blank is unchanged.</p>
+  {% if routine.price_rows %}
+  <form method="post" action="{{ url_for('positions.save_routine_prices') }}" novalidate>
+    {{ routine_form.hidden_tag() }}
+    <input type="hidden" name="effective_date" value="{{ routine.as_of_date.isoformat() }}">
+    <div class="table-wrap"><table class="data routine-table">
+      <thead><tr><th scope="col">Instrument</th><th scope="col">Used in</th><th scope="col">Latest source</th><th scope="col">New unit price</th></tr></thead>
+      <tbody>{% for row in routine.price_rows %}<tr>
+        <th scope="row">{{ row.instrument_name }}{% if row.ticker_or_isin %}<br><span class="muted">{{ row.ticker_or_isin }}</span>{% endif %}</th>
+        <td>{{ row.account_names|join(", ") }}</td>
+        <td>{% if row.status == "stale" %}{{ badge("stale", "Stale") }} {% elif row.status == "missing" %}{{ badge("missing", "Missing") }} {% endif %}{% if row.latest_amount is not none %}{{ row.currency_code }} {{ row.latest_amount|trim_decimal }} · {{ row.latest_date|display_date }}{% else %}{{ money_missing("no price yet") }}{% endif %}</td>
+        <td>{{ routine_amount_input(row, "New " ~ row.currency_code ~ " unit price for " ~ row.instrument_name) }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Save entered prices</button></div>
+  </form>
+  {% else %}{{ empty_state(body="No current quantity-tracked investments need prices on this date.", standalone=false) }}{% endif %}
+</section>
+
+<section class="card" aria-labelledby="routine-fx-heading">
+  <h2 id="routine-fx-heading">FX rates</h2>
+  {% if routine.reference_set %}
+  <p>Conversions use one reference set dated <strong>{{ routine.reference_set.effective_date|display_date }}</strong>. Inverses and crosses are derived from its EUR rates.</p>
+  <p class="form-actions"><a class="btn" href="{{ url_for('maintenance.settings', _anchor='fx-settings') }}">Review or update FX rates</a><a href="{{ url_for('fx_settings.manual') }}">Enter or correct rates manually</a></p>
+  {% else %}
+  <p><a href="{{ url_for('maintenance.settings', _anchor='fx-settings') }}">Download a complete reference set or enter rates manually in Settings →</a></p>
+  <p class="meta">Rates cover portfolio reporting and active relationship minimums. Use the direction shown on each row; the inverse is derived automatically. Blank is unchanged.</p>
+  {% if routine.fx_rows %}
+  <form method="post" action="{{ url_for('positions.save_routine_fx') }}" novalidate>
+    {{ routine_form.hidden_tag() }}
+    <input type="hidden" name="effective_date" value="{{ routine.as_of_date.isoformat() }}">
+    <div class="table-wrap"><table class="data routine-table">
+      <thead><tr><th scope="col">Relationship</th><th scope="col">Latest resolved rate</th><th scope="col">New rate</th></tr></thead>
+      <tbody>{% for row in routine.fx_rows %}<tr>
+        <th scope="row">1 {{ row.base_currency_code }} = RATE {{ row.quote_currency_code }}<br><span class="muted">{{ row.purposes|join("; ") }}</span></th>
+        <td>{% if row.status == "stale" %}{{ badge("stale", "Stale") }} {% elif row.status == "missing" %}{{ badge("missing", "Missing") }} {% endif %}{% if row.latest_amount is not none %}{{ row.latest_amount|trim_decimal }} · {{ row.latest_date|display_date }}{% if row.source_mode != "direct" %}<br><span class="muted">{{ row.source_mode }} via {{ row.path|join(" → ") }}</span>{% endif %}{% else %}{{ money_missing("no eligible path") }}{% endif %}</td>
+        <td>
+          {{ routine_amount_input(row, "New " ~ row.quote_currency_code ~ " per " ~ row.base_currency_code ~ " FX rate") }}
+          {% if row.same_day_sources %}
+          <div class="routine-same-day">
+            {{ routine_checkbox("replace_" ~ row.field_name, "Replace today's saved rate") }}
+          </div>
+          {% endif %}
+          {% set change_warning = routine_fx_warnings.get(row.field_name) %}
+          {% if change_warning %}
+          <div class="flash flash-warning" role="status">
+            Previous comparable rate: 1 {{ row.base_currency_code }} =
+            {{ change_warning.previous_rate|trim_decimal }} {{ row.quote_currency_code }}
+            on {{ change_warning.previous_date|display_date }}. The entered rate differs by
+            {{ change_warning.change_percent|money_amount(1) }}%.
+          </div>
+          {{ routine_checkbox("ack_" ~ row.field_name, "I checked this rate; save it anyway") }}
+          {% endif %}
+        </td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Save entered FX rates</button></div>
+  </form>
+  {% else %}{{ empty_state(body="No FX rates are needed for portfolio reporting or active relationship minimums on this date.", standalone=false) }}{% endif %}
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="routine-finish-heading">
+  <h2 id="routine-finish-heading">Finish this update</h2>
+  <p>When the sections you intended to review are complete, freeze what LookThrough shows for this date so it can be compared with a later update.</p>
+  <p><a class="btn" href="{{ url_for('snapshots.new', as_of=routine.as_of_date.isoformat()) }}">Review and save snapshot</a></p>
+</section>

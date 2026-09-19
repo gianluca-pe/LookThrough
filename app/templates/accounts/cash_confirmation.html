@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, money, wt_field, currency_datalist %}
+{% block title %}Set current cash balance{% endblock %}
+{% block heading %}Set current cash balance{% endblock %}
+{% block content %}
+<p class="meta">{{ account.institution_name }} · {{ account.name }}</p>
+{% if form.return_to.data == "setup_accounts" %}
+<p>Confirm this new account's opening cash balance below — after saving you return to
+   account setup, where you can add the next account.</p>
+{% endif %}
+
+{# Reference point : the calculated balance the confirmation
+   replaces. The correction itself is only ever shown after saving. #}
+<section class="card calculated-cash-card" aria-labelledby="calculated-cash-heading">
+  <h2 id="calculated-cash-heading" class="card-label">Calculated cash</h2>
+  {% if calculated.amount is not none %}
+  <p class="headline">{{ money({"amount": calculated.amount, "currency": calculated.currency_code}) }}</p>
+  <p class="meta">As of {{ calculated.as_of_date|display_date }} ·
+     {% if calculated.status == "confirmed" %}confirmed on {{ calculated.checkpoint.effective_date|display_date }}, carried forward{% else %}calculated from activity{% endif %}</p>
+  {% endif %}
+</section>
+
+{% set ns = namespace(first_empty="") %}
+{% set first_err = first_error(form, ["currency_code", "confirmed_balance_amount", "effective_date", "source_note"]) %}
+{% if not first_err and not form.is_submitted() %}
+  {% for field in [form.currency_code, form.confirmed_balance_amount, form.effective_date] %}
+    {% if not ns.first_empty and (field.data is none or field.data == "") %}
+      {% set ns.first_empty = field.id %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
+{{ error_summary(form) }}
+<form class="stack" method="post" action="{{ url_for('accounts.add_cash_confirmation', account_id=account.id) }}" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.currency_code, required=true, currency_suggest=true,
+              autofocus=(first_err == "currency_code" or ns.first_empty == "currency_code"),
+              hint="Three-letter code, e.g. EUR.") }}
+  {{ wt_field(form.confirmed_balance_amount, required=true, input_class="money-input",
+              autofocus=(first_err == "confirmed_balance_amount" or ns.first_empty == "confirmed_balance_amount"),
+              hint="The balance shown by the broker or statement.") }}
+  {{ wt_field(form.effective_date, required=true,
+              autofocus=(first_err == "effective_date" or ns.first_empty == "effective_date"),
+              hint="Treated as end-of-day: activity on this date is already included.") }}
+  {{ wt_field(form.source_note,
+              autofocus=(first_err == "source_note"),
+              hint="Optional statement reference. No category or explanation is required.") }}
+  <p class="meta">Saving replaces calculated cash through this date. The difference becomes a
+     reconciliation correction — not a deposit, withdrawal, income, expense, gain, or loss.</p>
+  <div class="form-actions">
+    {{ form.save_confirmation(class_="btn btn-primary") }}
+    {% if form.return_to.data == "setup_accounts" %}
+    <a class="btn btn-plain" href="{{ url_for('setup.show', step='accounts') }}">Back to account setup</a>
+    {% else %}
+    <a class="btn btn-plain" href="{{ url_for('accounts.detail', account_id=account.id) }}">Cancel</a>
+    {% endif %}
+  </div>
+</form>
+{{ currency_datalist() }}
+{% endblock %}

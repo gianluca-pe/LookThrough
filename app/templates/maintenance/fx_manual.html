@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import error_summary, wt_field %}
+{% block title %}Enter FX rates manually{% endblock %}
+{% block heading %}Enter FX rates manually{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('maintenance.settings', _anchor='fx-settings') }}">← FX settings</a></p>
+<section class="card stack">
+  <h2>A complete set, or a dated correction</h2>
+  <p>Enter foreign currency units for <strong>1 EUR</strong>, using rates for the same reference date. Enter up to 6 decimal places. No internet connection is needed.</p>
+  <p>For a new date, enter every required currency. To correct an existing set, use its date and enter only the changes; blank rows on that date stay unchanged. The review shows the effect before saving.</p>
+  {% if current %}<p class="meta">Latest saved set: {{ current.effective_date|display_date }}. Previous values below belong to that date; they are not automatically carried into a new date.</p>{% endif %}
+  <form method="post" action="{{ url_for('fx_settings.manual') }}" novalidate>
+    {{ form.hidden_tag() }}{{ error_summary(form) }}
+    {{ wt_field(form.effective_date, required=true, autofocus=first_error=='effective_date') }}
+    <div class="table-wrap"><table class="data fx-manual-table"><thead><tr><th scope="col">Currency and use</th><th scope="col">Last saved · units per EUR</th><th scope="col">Your rate</th></tr></thead><tbody>
+    {% for code, purposes in uses.items() if code != 'EUR' %}<tr>
+      <th scope="row">{{ code }}<br><span class="meta">{{ purposes|join('; ') }}</span></th><td class="fx-previous">{{ rates.get(code, 'No saved reference rate') }}</td>
+      <td>{{ wt_field(form['rate_' ~ code], autofocus=first_error=='rate_' ~ code, extra_attrs={'inputmode': 'decimal'}) }}</td>
+    </tr>{% endfor %}</tbody></table></div>
+    {{ wt_field(form.source_note, required=true, autofocus=first_error=='source_note', hint='Name the reference source, or explain what you are correcting.') }}
+    <p class="form-actions"><button class="btn btn-primary" type="submit">Review manual rates</button><a class="btn" href="{{ url_for('maintenance.settings', _anchor='fx-settings') }}">Cancel</a></p>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Account added{% endblock %}
+{% block heading %}Account added{% endblock %}
+{% block content %}
+<section class="card" aria-labelledby="created-account-heading">
+  <h2 id="created-account-heading">{{ account.name }}</h2>
+  <p class="meta">{{ account.institution_name }} · {{ account.default_currency_code }}</p>
+  <p>What belongs in this account?</p>
+  <div class="form-actions">
+    {% if account.cash_tracking_mode == "separate_cash" %}
+    <a class="btn btn-primary" href="{{ url_for('accounts.new_cash_confirmation', account_id=account.id, currency=account.default_currency_code) }}">Set opening cash balance</a>
+    {% endif %}
+    <a class="btn" href="{{ url_for('positions.new', account=account.id) }}">Add holding</a>
+    <a class="btn" href="{{ url_for('positions.new', account=account.id, kind='fixed_deposit') }}">Add fixed deposit</a>
+  </div>
+  {% if account.cash_tracking_mode == "included_in_aggregate" %}
+  <p class="meta">Cash is already inside this account's aggregate statement value, so no separate opening cash balance is needed.</p>
+  {% endif %}
+</section>
+<p class="form-actions">
+  <a class="btn btn-plain" href="{{ url_for('accounts.detail', account_id=account.id) }}">View account</a>
+  <a class="btn btn-plain" href="{{ url_for('accounts.index') }}">Back to Accounts</a>
+</p>
+{% endblock %}

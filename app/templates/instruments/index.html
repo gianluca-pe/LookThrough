@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_macros.html" import as_of_form, badge, empty_state %}
+{% block title %}Instruments{% endblock %}
+{% block heading %}Instruments{% endblock %}
+{% block as_of %}<span class="as-of">Classifications as of {{ as_of_date|display_date }}</span>{% endblock %}
+{% block content %}
+{{ as_of_form("instruments.index", as_of_date, label="Show classifications as of", extra_params={"view": instrument_view}) }}
+
+<nav class="catalogue-tabs" aria-label="Instrument catalogue view">
+  {% for view_code in instrument_view_codes %}
+  <a href="{{ url_for('instruments.index', view=view_code, as_of=as_of_date.isoformat()) }}"
+     {% if view_code == instrument_view %}aria-current="page"{% endif %}>
+    {{ view_code|title }} <span class="catalogue-count">{{ instrument_counts[view_code] }}</span>
+  </a>
+  {% endfor %}
+</nav>
+
+<p class="lede">Allocation roles are used in the Asset allocation card and retirement projection. FIRE buckets are used in Ten-year funding and the projection's withdrawal order. LookThrough does not infer either value.</p>
+
+{% if instruments %}
+<div class="table-wrap">
+<table class="data">
+  <thead>
+    <tr>
+      <th scope="col">Instrument</th>
+      <th scope="col">Asset allocation</th>
+      <th scope="col">FIRE bucket</th>
+      {% if instrument_view == "all" %}<th scope="col">Catalogue status</th>{% endif %}
+      <th scope="col"><span class="sr-only">Action</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for instrument in instruments %}
+    <tr>
+      <th scope="row">{{ instrument.name }}<br>
+        <span class="meta">{{ instrument.ticker_or_isin or "No identifier" }} · {{ instrument.instrument_type|replace('_', ' ')|title }} · {{ instrument.valuation_currency_code }}</span></th>
+      <td>
+      {% if instrument.role_weights %}
+        {% for role in instrument.role_weights %}{{ role.label }}{% if role.weight_decimal != 1 %} {{ role.weight_decimal|percentage_amount(none) }}%{% endif %}{{ ", " if not loop.last }}{% endfor %}
+        <br><span class="meta">Effective {{ instrument.classification_date|display_date }}</span>
+      {% else %}
+        {{ badge("missing", "Unclassified") }}
+      {% endif %}
+      </td>
+      <td>
+        {% if instrument.fire_bucket_code %}{{ fire_bucket_labels[instrument.fire_bucket_code] }}
+        {% else %}<span class="meta">— not set</span>{% endif %}
+      </td>
+      {% if instrument_view == "all" %}
+      <td>
+        {% if instrument.holding_status == "former" %}<span class="catalogue-status">Former</span>
+        {% elif instrument.holding_status == "unused" %}<span class="catalogue-status">Unused</span>
+        {% else %}<span class="meta">—</span>{% endif %}
+      </td>
+      {% endif %}
+      <td>
+        {% if instrument_view == "current" and default_view %}
+        <a href="{{ url_for('instruments.edit_classification', instrument_id=instrument.id) }}"
+           aria-label="{{ "Edit classification" if instrument.is_classified else "Classify" }} {{ instrument.name }}">
+          {{- "Edit classification" if instrument.is_classified else "Classify" -}}</a>
+        {% else %}
+        <a href="{{ url_for('instruments.edit_classification', instrument_id=instrument.id, view=instrument_view, as_of=as_of_date.isoformat()) }}"
+           aria-label="{{ "Edit classification" if instrument.is_classified else "Classify" }} {{ instrument.name }}">
+          {{- "Edit classification" if instrument.is_classified else "Classify" -}}</a>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+{% call empty_state() %}
+  {% if instrument_view == "current" %}
+  <p>No instruments are held as of {{ as_of_date|display_date }}.
+    {% if instrument_counts.former %}<a href="{{ url_for('instruments.index', view='former', as_of=as_of_date.isoformat()) }}">View former instruments</a>.{% endif %}
+    {% if instrument_counts.all %}<a href="{{ url_for('instruments.index', view='all', as_of=as_of_date.isoformat()) }}">View all instrument identities</a>.{% endif %}
+  </p>
+  {% elif instrument_view == "former" %}
+  <p>No former instruments as of {{ as_of_date|display_date }}.</p>
+  {% else %}
+  <p>No active instrument identities yet. Add a position first.</p>
+  {% endif %}
+{% endcall %}
+{% endif %}
+{% endblock %}

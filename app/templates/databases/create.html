@@ -1,0 +1,16 @@
+{% extends 'databases/base.html' %}
+{% from '_macros.html' import error_summary, wt_field %}
+{% block title %}Create a database{% endblock %}
+{% block content %}
+<p class="database-back"><a href="{{ url_for('chooser') }}">← Choose a database</a></p>
+<div class="database-intro"><p class="database-eyebrow">A separate workspace</p><h1>Create a database</h1><p>Start empty, then enter your portfolio details in setup. Your other databases stay as they are.</p></div>
+<section class="card database-create">
+{{ error_summary(form) }}
+<form method="post" action="{{ url_for('new_database') }}" class="stack" novalidate>
+{{ form.hidden_tag() }}
+{{ wt_field(form.name, required=true, autofocus=true, hint='For example: Retirement or Practice. Use letters, numbers, spaces, hyphens or underscores; we add .sqlite3.') }}
+{% if filename %}<input type="hidden" name="preview_filename" value="{{ filename }}"><div class="database-preview"><p>The new file will be:</p><p class="database-filename"><strong>{{ filename }}</strong></p><p class="hint">In {{ folder }}</p></div><p class="form-actions"><button class="btn btn-primary" name="confirm" value="yes">Create database &amp; start setup</button><button class="btn" type="submit">Update filename preview</button></p>
+{% else %}<p class="form-actions"><button class="btn btn-primary" type="submit">Continue</button></p>{% endif %}
+</form>
+</section>
+{% endblock %}

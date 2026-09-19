@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, wt_checkbox, wt_field %}
+{% block title %}Classify {{ instrument.name }}{% endblock %}
+{% block heading %}Classify {{ instrument.name }}{% endblock %}
+{% block content %}
+<p class="meta">{{ instrument.instrument_type|replace('_', ' ')|title }} · {{ instrument.valuation_currency_code }}{% if instrument.ticker_or_isin %} · {{ instrument.ticker_or_isin }}{% endif %}</p>
+<p class="lede">Set the allocation role and FIRE bucket used in the current planning views. The allocation role is used in Asset allocation and the retirement projection. The FIRE bucket is used in Ten-year funding and the projection's withdrawal order. LookThrough does not infer either value.</p>
+
+<section class="card" aria-labelledby="current-classification-heading">
+<h2 id="current-classification-heading">Current classification</h2>
+{% if instrument.is_classified %}
+<p>
+  <strong>Allocation role:</strong>
+  {% for role in instrument.role_weights %}{{ role.label }}{% if role.weight_decimal != 1 %} {{ role.weight_decimal|percentage_amount(none) }}%{% endif %}{{ ", " if not loop.last }}{% endfor %}<br>
+  <strong>FIRE bucket:</strong> {{ fire_bucket_labels[instrument.fire_bucket_code] if instrument.fire_bucket_code else "Not set" }}<br>
+  <span class="meta">Effective {{ instrument.classification_date|display_date }}</span>
+</p>
+<p class="meta">A new date keeps the existing history. If a classification already exists for the entered date, the form asks you to confirm its replacement.</p>
+{% else %}
+<p class="meta">No allocation role is set. Its included value remains visible as Unclassified and is excluded from allocation percentages.</p>
+{% endif %}
+</section>
+
+{% set fields = ["effective_date", "classification_mode", "primary_role_code",
+  "role_equity_percent", "role_income_percent", "role_liquidity_percent",
+  "role_alternatives_percent", "fire_bucket_code", "source_note",
+  "replace_existing"] %}
+{% set first_err = first_error(form, fields) %}
+{{ error_summary(form) }}
+
+<form class="stack" method="post" novalidate data-classification-form>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.effective_date, required=true, autofocus=(first_err == "effective_date"), hint="Use the factsheet date when the split comes from a dated document; otherwise use the date of your review.") }}
+  {{ wt_field(form.classification_mode, required=true, label="Role format", autofocus=(first_err == "classification_mode"), hint="Choose one role when the instrument fits one role. Choose a percentage split for a multi-asset instrument.") }}
+
+  {# Definition copy is presentation-only; role names and order come from the
+     shared economic_role_labels global so the vocabulary cannot drift. #}
+  {% set role_definitions = {
+    "equity": "Shares and equity funds.",
+    "income": "Bonds and credit holdings.",
+    "liquidity": "Cash, money-market funds, T-bills, and short fixed deposits.",
+    "alternatives": "Gold and other diversifying holdings.",
+  } %}
+  <dl class="classification-definitions" aria-label="Allocation role definitions">
+    {% for role_code, role_label in economic_role_labels.items() %}
+    <div><dt>{{ role_label }}</dt><dd>{{ role_definitions[role_code] }}</dd></div>
+    {% endfor %}
+  </dl>
+
+  <div data-primary-role-section>
+    {{ wt_field(form.primary_role_code, label="Allocation role", autofocus=(first_err == "primary_role_code")) }}
+  </div>
+
+  {# This fieldset is visible in the HTML-only path. The optional enhancement
+     hides the section that does not match Role format. #}
+  <fieldset class="field classification-role-split" data-advanced-roles>
+    <legend>Allocation role percentages</legend>
+    <div class="form-grid">
+      {% for role_code in economic_role_labels %}
+        {% set field = form["role_" ~ role_code ~ "_percent"] %}
+        {{ wt_field(field, input_class="money-input", autofocus=(first_err == field.id)) }}
+      {% endfor %}
+    </div>
+    <p class="hint">Use a dated factsheet or another source you trust. Percentages must total 100%. Blank and zero roles are not saved.</p>
+    <p class="meta" data-role-total hidden></p>
+  </fieldset>
+
+  {{ wt_field(form.fire_bucket_code, label="FIRE bucket", autofocus=(first_err == "fire_bucket_code"), hint="Now: the first " ~ funding_periods["now"].end_year ~ " years of retirement spending. Bridge: years " ~ funding_periods["bridge"].start_year ~ "–" ~ funding_periods["bridge"].end_year ~ ". Growth: after year " ~ funding_periods["bridge"].end_year ~ ". Projects: a separate purpose excluded from retirement funding. You may leave this unset.") }}
+
+  {{ wt_field(form.source_note, autofocus=(first_err == "source_note"), hint="Optional. For example: “Factsheet dated 31 Jul 2026: 60% equity, 40% bonds.”") }}
+  {% if form.replace_existing.errors or form.replace_existing.data %}
+    {{ wt_checkbox(form.replace_existing, autofocus=(first_err == "replace_existing")) }}
+  {% endif %}
+  <div class="form-actions">
+    {{ form.save_classification(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('instruments.index', view=return_view, as_of=return_as_of.isoformat() if return_as_of else none) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,13 @@
+{# Shared activity-type switcher; expects `activity_type` ("buy", "sell",
+   "dividend", "fixed_deposit", or "" for the chooser). Keeps every activity
+   form on the same navigation row so new types appear everywhere at once.
+   The catalogue is defined once in app/activity.py (ACTIVITY_TYPES) and
+   injected as the `activity_types` template context, so labels and disabled
+   placeholders cannot drift from the /activity/new chooser cards. #}
+<nav class="small activity-switcher" aria-label="Activity type">
+  {% for type in activity_types %}{{ " · " if not loop.first }}
+  {%- if type.disabled %}<span class="muted" aria-disabled="true">{{ type.label }}</span>
+  {%- elif activity_type == type.code %}<strong aria-current="page">{{ type.label }}</strong>
+  {%- else %}<a href="{{ type.url }}">{{ type.label }}</a>{% endif %}
+  {%- endfor %}
+</nav>

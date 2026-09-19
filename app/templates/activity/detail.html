@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money, badge %}
+{% block title %}{{ activity.activity_label }}{% endblock %}
+{% block heading %}{{ activity.activity_label }}{% endblock %}
+{% block as_of %}<span class="as-of">Effective {{ activity.effective_date|display_date }}</span>{% endblock %}
+{% block content %}
+<section class="card" aria-label="Activity detail">
+  <dl class="summary-list">
+    <dt>Status</dt><dd>{% if activity.status == "reversed" %}{{ badge("stale", activity.status_label) }}{% else %}{{ activity.status_label }}{% endif %}</dd>
+    <dt>Account</dt><dd>{{ activity.institution_name }} · {{ activity.account_name }}</dd>
+    {% if activity.instrument_name %}<dt>Instrument</dt><dd>{{ activity.instrument_name }}</dd>{% endif %}
+    {% if activity.quantity_effect is not none %}<dt>Quantity effect</dt><dd>{{ activity.quantity_effect|trim_decimal|money_amount(none) }} units</dd>{% endif %}
+    {% if activity.cash_effect is not none %}<dt>Cash effect</dt><dd>{{ money({"amount": activity.cash_effect, "currency": activity.currency_code}) }}</dd>{% endif %}
+    {% if activity.fee_amount is not none %}<dt>Fee</dt><dd>{{ money({"amount": activity.fee_amount, "currency": activity.currency_code}) }}</dd>{% endif %}
+    {% if activity.withholding_amount is not none %}<dt>Entered withholding</dt><dd>{{ money({"amount": activity.withholding_amount, "currency": activity.currency_code}) }}</dd>{% endif %}
+    {% if activity.note %}<dt>{{ "Details" if activity.activity_type == "fixed_deposit_maturity" else "Reason" }}</dt><dd>{{ activity.note }}</dd>{% endif %}
+    <dt>Recorded</dt><dd>{{ activity.recorded_at.date()|display_date }}</dd>
+  </dl>
+  {% if activity.linked_transaction_ids %}
+  <p class="meta">Recorded together with {% for id in activity.linked_transaction_ids %}<a href="{{ url_for('activity.detail', transaction_id=id) }}">activity #{{ id }}</a>{% if not loop.last %} and {% endif %}{% endfor %} — they reverse together.</p>
+  {% endif %}
+  {% if activity.reverses_transaction_id %}<p class="meta">This correction reverses <a href="{{ url_for('activity.detail', transaction_id=activity.reverses_transaction_id) }}">activity #{{ activity.reverses_transaction_id }}</a>, which stays in history.</p>{% endif %}
+  {% if activity.reversed_by_transaction_ids %}<p class="meta">Corrected by {% for id in activity.reversed_by_transaction_ids %}<a href="{{ url_for('activity.detail', transaction_id=id) }}">reversal #{{ id }}</a>{% if not loop.last %} and {% endif %}{% endfor %}. Current holdings and cash no longer count this activity.</p>{% endif %}
+</section>
+<p class="form-actions">
+  {% if activity.can_reverse %}<a class="btn" href="{{ url_for('activity.reverse', transaction_id=activity.transaction_id) }}">Reverse activity</a>{% endif %}
+  <a class="btn" href="{{ url_for('activity.history') }}">Activity history</a>
+</p>
+{% endblock %}

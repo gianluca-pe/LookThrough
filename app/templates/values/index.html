@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_macros.html" import currency_datalist, first_error %}
+{% block title %}{{ "Set up values" if values_pathway == "setup" else "Update values" }}{% endblock %}
+{% block heading %}{{ "Add current values" if values_pathway == "setup" else "Update values" }}{% endblock %}
+{% block content %}
+{# One page, two pathways: the setup checklist and the
+   routine /values session compose the same individual forms; the
+   maintenance persona adds the grouped routine session on top. #}
+{% set price_err = first_error(price_form, ["instrument_id", "effective_date", "price_amount", "currency_code", "confirm_same_day_correction"]) %}
+{% set stmt_err = first_error(statement_form, ["registration_id", "effective_date", "native_value_amount", "currency_code"]) %}
+{% set fx_err = first_error(fx_form, ["base_currency_code", "quote_currency_code", "effective_date", "quote_per_base_amount", "confirm_same_day_correction", "acknowledge_large_change"]) %}
+
+<div{% if values_pathway == "setup" %} class="setup-layout"{% endif %}>
+  {% if values_pathway == "setup" %}
+  {% include "setup/_steps.html" %}
+  {% endif %}
+
+  <div class="values-workspace{% if values_pathway == "setup" %} setup-content{% else %} values-maintenance{% endif %}">
+    {% if values_pathway == "setup" %}
+    <p class="values-intro">Enter what you know from statements and
+       quotes, each with its date. Anything missing or old shows up on Holdings as a warning —
+       never as an invented number.</p>
+    {% endif %}
+
+    {% if values_pathway == "maintenance" %}
+    {% include "values/_routine_session.html" %}
+
+    <details class="card"{% if individual_updates_open %} open{% endif %}>
+      <summary><strong>Individual updates</strong></summary>
+      <p class="meta">Use these forms for an exceptional source or a targeted action from Overview or Holdings.</p>
+      {% include "values/_individual_forms.html" %}
+    </details>
+    {% else %}
+    {% include "values/_individual_forms.html" %}
+    {% endif %}
+
+    <p class="muted small">Once prices and FX are in, <a href="{{ url_for('positions.holdings') }}">Holdings</a>
+       shows native and reporting values with their dates.</p>
+
+    {% if values_pathway == "maintenance" %}
+    <p class="values-guided-link">Want the guided checklist? <a href="{{ url_for('overview.review') }}">Review initial setup</a>.</p>
+    {% endif %}
+
+  </div>
+</div>
+{{ currency_datalist() }}
+{% endblock %}

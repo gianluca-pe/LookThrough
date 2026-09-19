@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Virtual environment
+.venv/
+venv/
+
+# Flask / app data (local SQLite lives in the instance directory)
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local backups and exports must never be committed (private financial data)
+backups/
+exports/
+*.backup.json
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local agent configuration and transient browser/test output
+.agents/
+.codex/
+*.sqlite3-*
+*.sqlite-*
+*.db-*

@@ -1,0 +1,345 @@
+{# Reusable Jinja macros. Templates render view models; they never recompute
+   financial totals. #}
+
+{# Native money with optional reporting line.
+   vm: {"amount": "18400.00", "currency": "EUR",
+        "reporting": {"amount": "26100.00", "currency": "SGD", "note": "1 EUR = 1.4181 SGD · 31 Jul 2026"} } #}
+{% macro money(vm) -%}
+<span class="money"><span class="ccy">{{ vm.currency }}</span> {{ vm.amount|money_amount(currency=vm.currency) }}</span>
+{%- if vm.reporting %}
+<span class="money-reporting">≈ <span class="ccy">{{ vm.reporting.currency }}</span> {{ vm.reporting.amount|money_amount(currency=vm.reporting.currency) }}
+  {%- if vm.reporting.note %} · {{ vm.reporting.note }}{% endif %}</span>
+{%- endif %}
+{%- endmacro %}
+
+{# Values-page destination for a structured missing or single stale source
+  . A source whose exact identity is known
+   deep-links to the targeted, prefilled form; anything unknown or
+   multi-source keeps the generic page. Copy is never parsed to choose a
+   target — the structured fields are the whole contract. #}
+{% macro values_update_url(source, instrument_id=none, registration_id=none, base_currency=none, quote_currency=none, guided_setup=false) -%}
+{%- set endpoint = 'positions.show_setup_values' if guided_setup else 'positions.show_values' -%}
+{%- if source == "price" and instrument_id %}{{ url_for(endpoint, instrument=instrument_id, _anchor='prices-heading') }}
+{%- elif source == "price" %}{{ url_for(endpoint, _anchor='prices-heading') }}
+{%- elif source == "statement" and registration_id %}{{ url_for(endpoint, registration=registration_id, _anchor='statements-heading') }}
+{%- elif source == "statement" %}{{ url_for(endpoint, _anchor='statements-heading') }}
+{%- elif source == "fx" and base_currency %}{{ url_for(endpoint, base=base_currency, quote=quote_currency, _anchor='fx-heading') }}
+{%- elif source == "fx" %}{{ url_for(endpoint, _anchor='fx-heading') }}
+{%- else %}{{ url_for(endpoint) }}
+{%- endif -%}
+{%- endmacro %}
+
+{# Specific stale-component label from the structured stale_sources tuple
+   , native source first then FX: "Stale price",
+   "Stale statement value", "Stale FX", "Stale price and FX". #}
+{% macro stale_label(stale_sources) -%}
+Stale{% for source in stale_sources %} {{ "price" if source == "price" else "statement value" if source == "statement" else "FX" }}{{- " and" if not loop.last }}{% endfor %}
+{%- endmacro %}
+
+{# Missing is a value state: em-dash plus reason, linked to the fix. With no
+   reason and no fix this is also the single bare-dash idiom. #}
+{% macro money_missing(reason=none, fix_url=none) -%}
+<span class="money-missing">—{% if reason %} {{ reason }}{% endif %}{% if fix_url %} · <a href="{{ fix_url }}">Update →</a>{% endif %}</span>
+{%- endmacro %}
+
+{# Status badge. kind: "stale" | "missing" | "warning". Fresh = no badge. #}
+{% macro badge(kind, label) -%}
+<span class="badge badge-{{ kind }}">{{ label }}</span>
+{%- endmacro %}
+
+{# Subordinate investment and cash subtotals under the portfolio headline
+   (cash-aware summary). Amounts, counts, and statuses come
+   straight from build_portfolio_summary; the template never adds the two
+   subtotals itself. These are gross subtotals: account share and access
+   overlays are applied only at headline level, not per sleeve. #}
+{% macro portfolio_subtotals(summary) -%}
+{% set excluded = summary.excluded_by_share_reporting_amount %}
+{% set restricted = summary.restricted_reporting_amount %}
+{% set term = summary.term_liquidity_reporting_amount %}
+<div class="table-wrap">
+<table class="data subtotals">
+  <tbody>
+    {{ subtotal_row("Investments (gross)", "positions", summary.investment_reporting_amount,
+                    summary.reporting_currency, summary.investment_status,
+                    summary.position_count, summary.reporting_valued_count) }}
+    {{ subtotal_row("Cash (gross)", "cash balances", summary.cash_reporting_amount,
+                    summary.reporting_currency, summary.cash_status,
+                    summary.cash_balance_count, summary.cash_reporting_valued_count) }}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th scope="row">Gross tracked value</th>
+      <td class="num">
+        {%- if summary.gross_reporting_amount is not none %}
+        {{ money({"amount": summary.gross_reporting_amount, "currency": summary.reporting_currency}) }}
+        {%- else %}{{ money_missing() }}{% endif %}
+      </td>
+      <td class="meta">
+        {%- if excluded and excluded > 0 %}
+        {{ money({"amount": excluded, "currency": summary.reporting_currency}) }}
+        stays outside the portfolio by the account shares you entered.
+        {%- endif %}
+      </td>
+    </tr>
+    {% if term and term > 0 %}
+    <tr>
+      <th scope="row">Term liquidity</th>
+      <td class="num">{{ money({"amount": term, "currency": summary.reporting_currency}) }}</td>
+      <td class="meta">is in fixed deposits that have not reached maturity.</td>
+    </tr>
+    {% endif %}
+    {% if (excluded and excluded > 0) or (restricted and restricted > 0) or (term and term > 0) %}
+    <tr>
+      <th scope="row">Accessible now</th>
+      <td class="num">
+        {%- if summary.accessible_reporting_amount is not none %}
+        {{ money({"amount": summary.accessible_reporting_amount, "currency": summary.reporting_currency}) }}
+        {%- else %}{{ money_missing() }}{% endif %}
+      </td>
+      <td class="meta">
+        {%- if restricted and restricted > 0 %}
+        {{ money({"amount": restricted, "currency": summary.reporting_currency}) }}
+        is restricted by the access settings you entered.
+        {%- endif %}
+        {%- if term and term > 0 %} Term liquidity above stays locked until maturity.{% endif %}
+        {%- if not ((restricted and restricted > 0) or (term and term > 0)) %}of your included share.{% endif %}
+      </td>
+    </tr>
+    {% endif %}
+  </tfoot>
+</table>
+</div>
+{%- endmacro %}
+
+{# Status copy for one subtotal: badge plus counts, never a recomputed
+   amount. Shared by subtotal_row and the Holdings card footers. #}
+{% macro subtotal_status(unit, status, item_count, valued_count) -%}
+{%- if status == "partial" %}{{ badge("missing", "Partial") }} known for {{ valued_count }} of {{ item_count }} {{ unit }}
+{%- elif status == "missing" %}{{ badge("missing", "Missing") }} no reporting value yet
+{%- elif status == "stale" %}{{ badge("stale", "Stale") }} {{ item_count }} {{ unit }} valued; at least one source is old
+{%- elif status == "empty" %}none tracked
+{%- else %}{{ item_count }} {{ unit }} valued
+{%- endif %}
+{%- endmacro %}
+
+{% macro subtotal_row(label, unit, amount, currency, status, item_count, valued_count) -%}
+<tr>
+  <th scope="row">{{ label }}</th>
+  <td class="num">
+    {%- if amount is not none %}{{ money({"amount": amount, "currency": currency}) }}
+    {%- else %}{{ money_missing() }}{% endif %}
+  </td>
+  <td class="meta">{{ subtotal_status(unit, status, item_count, valued_count) }}</td>
+</tr>
+{%- endmacro %}
+
+{# Sortable column header: server-side link toggling direction, current state
+   exposed via aria-sort on the active header. Requires sort_by,
+   sort_direction, and as_of_date in the template context; the sort links
+   preserve the as-of date. No JavaScript involved. Tables with their own
+   parameter names (e.g. the Holdings cash table's cash_sort/cash_direction)
+   pass sort_param/direction_param plus the matching current_sort/
+   current_direction state. #}
+{% macro sort_th(endpoint, key, label, numeric=false, extra_params={}, anchor=none, sort_param="sort", direction_param="direction", current_sort=none, current_direction=none) -%}
+{% set active_sort = sort_by if current_sort is none else current_sort %}
+{% set active_direction = sort_direction if current_direction is none else current_direction %}
+{% set link_params = {sort_param: key, direction_param: ("desc" if active_sort == key and active_direction == "asc" else "asc"), "as_of": as_of_date.isoformat()} %}
+{% set _ = link_params.update(extra_params) %}
+<th scope="col"{% if numeric %} class="num"{% endif %}{% if active_sort == key %} aria-sort="{{ "ascending" if active_direction == "asc" else "descending" }}"{% endif %}>
+  <a href="{{ url_for(endpoint, **link_params) }}{{ "#" ~ anchor if anchor }}">{{ label }}{% if active_sort == key %}
+    <span aria-hidden="true">{{ "▲" if active_direction == "asc" else "▼" }}</span>{% endif %}</a>
+</th>
+{%- endmacro %}
+
+{# --- WTForms renderers. Field names and validation stay backend-owned;
+     these macros only control presentation. --- #}
+
+{# Datalist of currency codes already in use (known_currency_codes is a
+   template global from the shell blueprint). Suggests, never restricts: any
+   valid three-letter code remains enterable and backend validation is
+   unchanged. Render once per page that has a currency-suggested field. #}
+{% macro currency_datalist() -%}
+<datalist id="currency-codes">
+  {% for code in known_currency_codes() %}<option value="{{ code }}">{% endfor %}
+</datalist>
+{%- endmacro %}
+
+{# Linked error summary. Each item anchors to its field; the summary is
+   announced via role="alert". Focus is handled by autofocus on the first
+   invalid field (see wt_field), so the no-JavaScript path is complete.
+   id_prefix must match the prefix used when rendering the form's fields.
+   heading_level is 3 when several summaries can share one page. Non-WTForms
+   callers (GET filter forms, the routine update grid) pass items as
+   (anchor, label, message) tuples instead of a form; label may be none. #}
+{% macro error_summary(form=none, id_prefix="", heading_level=2, items=none) -%}
+{% if form is not none and form.errors %}
+<div class="error-summary" role="alert">
+  <h{{ heading_level }}>There is a problem</h{{ heading_level }}>
+  <ul>
+    {% for field_name, errors in form.errors.items() %}
+      {% for error in errors %}
+    <li><a href="#{{ id_prefix }}{{ field_name }}">{% if form[field_name].label %}{{ form[field_name].label.text }}: {% endif %}{{ error }}</a></li>
+      {% endfor %}
+    {% endfor %}
+  </ul>
+</div>
+{% elif items %}
+<div class="error-summary" role="alert">
+  <h{{ heading_level }}>There is a problem</h{{ heading_level }}>
+  <ul>
+    {% for anchor, label, message in items %}
+    <li><a href="#{{ anchor }}">{% if label %}{{ label }}: {% endif %}{{ message }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{# Stacked WTForms field: label above with required stated in text, error
+   wired with aria-invalid/aria-describedby, optional hint, autofocus, and a
+   presentation-only label override (e.g. adding a known currency).
+   required=true also emits the HTML required attribute: forms are
+   novalidate, so it informs assistive technology without activating
+   browser-native validation.
+   NB: WTForms renders None attribute values literally, so optional
+   attributes are passed False to omit them. id_prefix disambiguates ids
+   when several forms on one page share field names. extra_attrs renders
+   additional HTML attributes verbatim (WTForms dasherises underscores),
+   e.g. data islands for progressive enhancement. #}
+{% macro wt_field(field, required=false, hint=none, input_class="", autofocus=false, id_prefix="", typeahead=false, new_instrument=false, label=none, currency_suggest=false, extra_attrs={}) -%}
+{% set fid = id_prefix ~ field.id %}
+{% set describedby = [] %}
+{% if field.errors %}{% set _ = describedby.append(fid ~ "-error") %}{% endif %}
+{% if hint %}{% set _ = describedby.append(fid ~ "-hint") %}{% endif %}
+<div class="field">
+  <label for="{{ fid }}">{{ label or field.label.text }}{% if required %} <span class="req">(required)</span>{% endif %}</label>
+  {{ field(
+      id=fid,
+      class_=input_class or false,
+      required=true if required else false,
+      aria_invalid="true" if field.errors else false,
+      aria_describedby=describedby|join(" ") if describedby else false,
+      autofocus=autofocus,
+      list="currency-codes" if currency_suggest else false,
+      autocomplete="off" if currency_suggest else false,
+      data_typeahead="true" if typeahead else false,
+      data_new_instrument="true" if new_instrument else false,
+      **extra_attrs) }}
+  {% if field.errors %}<div class="field-error" id="{{ fid }}-error">{{ field.errors|join(" ") }}</div>{% endif %}
+  {% if hint %}<div class="hint" id="{{ fid }}-hint">{{ hint }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Checkbox row: input before its label, both on one line. Optional hint is
+   rendered after the label and wired into aria-describedby alongside any
+   error; required states "(required)" in the label text, as wt_field does. #}
+{% macro wt_checkbox(field, id_prefix="", autofocus=false, hint=none, required=false) -%}
+{% set fid = id_prefix ~ field.id %}
+{% set describedby = [] %}
+{% if field.errors %}{% set _ = describedby.append(fid ~ "-error") %}{% endif %}
+{% if hint %}{% set _ = describedby.append(fid ~ "-hint") %}{% endif %}
+<div class="field field-check">
+  {{ field(id=fid, autofocus=autofocus,
+           aria_invalid="true" if field.errors else false,
+           aria_describedby=describedby|join(" ") if describedby else false) }}
+  <label for="{{ fid }}">{{ field.label.text }}{% if required %} <span class="req">(required)</span>{% endif %}</label>
+  {% if field.errors %}<div class="field-error" id="{{ fid }}-error">{{ field.errors|join(" ") }}</div>{% endif %}
+  {% if hint %}<div class="hint" id="{{ fid }}-hint">{{ hint }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Multi-checkbox group: one.field-check row per choice (input before
+   label, the wt_checkbox shape), inside a fieldset whose legend is the
+   group's accessible name. Errors wire to the fieldset via aria-describedby
+   and to every input via aria-invalid. Item ids default to
+   "<field id>-<value>"; item_id_prefix overrides that prefix. #}
+{% macro checkbox_group(field, legend, legend_suffix=none, hint=none, empty_note=none, autofocus=false, item_id_prefix=none) -%}
+<fieldset id="{{ field.id }}"{% if field.errors %} aria-describedby="{{ field.id }}-error"{% endif %}>
+  <legend>{{ legend }}{% if legend_suffix %} <span class="req">{{ legend_suffix }}</span>{% endif %}</legend>
+  {% if hint %}<p class="meta">{{ hint }}</p>{% endif %}
+  {% for value, label in field.choices %}
+  {% set cid = (item_id_prefix or field.id ~ "-") ~ value %}
+  <div class="field field-check">
+    <input id="{{ cid }}" name="{{ field.name }}" type="checkbox" value="{{ value }}"
+           {% if field.errors %}aria-invalid="true"{% endif %}
+           {% if autofocus and loop.first %}autofocus{% endif %}
+           {% if value in field.data %}checked{% endif %}>
+    <label for="{{ cid }}">{{ label }}</label>
+  </div>
+  {% endfor %}
+  {% if empty_note %}<p class="meta">{{ empty_note }}</p>{% endif %}
+  {% if field.errors %}<div class="field-error" id="{{ field.id }}-error">{{ field.errors|join(" ") }}</div>{% endif %}
+</fieldset>
+{%- endmacro %}
+
+{# Radio-card group: one clickable card per choice,
+   each with its own hint. The fieldset legend is the group's accessible
+   name — no redundant role="radiogroup" div. Errors wire to the group via
+   aria-describedby and to every input via aria-invalid; the error-summary
+   anchor resolves to the first radio, which carries the field's id (later
+   cards are <id>-<value>). hints maps choice value to its card hint text;
+   default_first checks the first card when nothing is selected yet. #}
+{% macro radio_cards(field, hints={}, columns=2, hint=none, autofocus=false, default_first=false) -%}
+{% set describedby = [] %}
+{% if field.errors %}{% set _ = describedby.append(field.id ~ "-error") %}{% endif %}
+{% if hint %}{% set _ = describedby.append(field.id ~ "-hint") %}{% endif %}
+<fieldset class="field"{% if describedby %} aria-describedby="{{ describedby|join(" ") }}"{% endif %}>
+  <legend>{{ field.label.text }} <span class="req">(required)</span></legend>
+  <div class="choice-row{% if columns == 3 %} choice-row-3{% endif %}">
+    {% for value, label in field.choices %}
+    {% set rid = field.id if loop.first else field.id ~ "-" ~ value %}
+    <label class="choice" for="{{ rid }}">
+      <input type="radio" name="{{ field.name }}" value="{{ value }}"
+             id="{{ rid }}"
+             {% if field.data == value or (default_first and not field.data and loop.first) %}checked{% endif %}
+             {% if field.errors %}aria-invalid="true"{% endif %}
+             {% if autofocus and loop.first %}autofocus{% endif %}>
+      <span>
+        <strong>{{ label }}</strong><br>
+        <span class="hint">{{ hints.get(value, "") }}</span>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+  {% if field.errors %}<div class="field-error" id="{{ field.id }}-error">{{ field.errors|join(" ") }}</div>{% endif %}
+  {% if hint %}<div class="hint" id="{{ field.id }}-hint">{{ hint }}</div>{% endif %}
+</fieldset>
+{%- endmacro %}
+
+{# First invalid field name from field_names (in tab order), used to place
+   autofocus on the first field with an error. Returns "" when nothing has
+   errors. #}
+{% macro first_error(form, field_names) -%}
+{%- set ns = namespace(name="") -%}
+{%- for name in field_names -%}
+{%- if not ns.name and form[name].errors %}{% set ns.name = name %}{% endif -%}
+{%- endfor -%}
+{{- ns.name -}}
+{%- endmacro %}
+
+{# Standalone empty state: one block class (app.css.empty-state), one
+   structure. Rich bodies (links, several paragraphs) go in a call block;
+   plain text can use the body parameter. standalone=false drops the card
+   chrome for a section's own empty state inside an existing card. #}
+{% macro empty_state(title=none, body=none, action_url=none, action_label=none, standalone=true) -%}
+<div class="empty-state{% if not standalone %} empty-state-inline{% endif %}">
+  {% if title %}<p class="empty-state-title"><strong>{{ title }}</strong></p>{% endif %}
+  {% if body %}<p>{{ body }}</p>{% endif %}
+  {% if caller is defined %}{{ caller() }}{% endif %}
+  {% if action_url and action_label %}<p><a class="btn btn-primary" href="{{ action_url }}">{{ action_label }}</a></p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# As-of date GET picker, shared by Overview, Holdings, Accounts, and
+   Instruments. extra_params become hidden inputs preserving the page's
+   current sort/view state. The Apply button always renders: with JavaScript
+   enhance.js submits on change, without it Apply is the complete path. #}
+{% macro as_of_form(endpoint, as_of_date, label="Show values as of", extra_params={}, anchor=none, autosubmit=true, url_params={}) -%}
+<form class="asof-form" method="get" action="{{ url_for(endpoint, **url_params) }}{{ "#" ~ anchor if anchor }}"{% if autosubmit %} data-autosubmit="true"{% endif %}>
+  <label for="as_of">{{ label }}</label>
+  <input id="as_of" name="as_of" type="date" value="{{ as_of_date.isoformat() }}">
+  {% for key, value in extra_params.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">
+  {% endfor %}
+  <button class="btn" type="submit">Apply</button>
+</form>
+{%- endmacro %}

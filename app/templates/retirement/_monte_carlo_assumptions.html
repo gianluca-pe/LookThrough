@@ -1,0 +1,12 @@
+{% set p = experiment.basis.plan %}
+<div class="retirement-facts">
+<div><span>Core / year</span><strong>USD {{ p.core_amount|money_amount }}</strong><small>Today's money</small></div>
+<div><span>Flexible {{ 'tested' if result else 'allowance' }} / year</span><strong>USD {{ p.flexible_amount|money_amount }}</strong><small>Today's money</small></div>
+<div><span>Retire at {{ p.withdrawal_start_age_years }}</span><strong>Through age {{ p.final_age_years }}</strong><small>Age now {{ p.current_age_years }}</small></div>
+<div><span>Final-age goal</span><strong>USD {{ p.terminal_legacy_target_amount|money_amount }}</strong><small>Today's money</small></div>
+</div>
+<p class="meta">Portfolio &amp; purchasing-power date: {{ p.base_date|display_date }} · Inflation: {{ p.core_inflation_decimal|percentage_amount(2) }}% fixed each year · Net savings while working: USD {{ p.annual_savings_amount|money_amount }}/year, fixed nominal amount.</p>
+<p>Starting retirement capital: <strong>USD {{ experiment.starting_capital|money_amount }}</strong>. Locked assets: <strong>USD {{ experiment.locked_amount|money_amount }}</strong>. Projects are outside this funding model.</p>
+<p class="hint">Planned income follows its entered dates and escalation. Salary covers living costs while working. Retirement withdrawals and rebalancing are proportional across available assets; FIRE buckets do not set their order.</p>
+<p class="meta">Planned income: {% for income in income_assumptions %}{{ income.name }} ({{ income.currency_code }} {{ income.annual_amount|money_amount(currency=income.currency_code) }}/year at its start){{ '; ' if not loop.last }}{% else %}none{% endfor %}.</p>
+{% if basis.status == 'stale' %}<p class="notice">Some source values or FX rates are stale. Refresh them before relying on this experiment. Dates and status appear in the report.</p>{% endif %}

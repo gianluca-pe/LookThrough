@@ -1,0 +1,46 @@
+{% from "_macros.html" import badge, money, stale_label, values_update_url %}
+{# One attention-list item, shared by Overview and the setup Review page.
+   guided_setup=true deep-links value fixes into the guided /setup/values
+   pathway instead of the routine /values page.
+   Review's item list never carries classification items, so that branch is
+   inert there. #}
+{% macro attention_list_item(item, guided_setup=false) -%}
+<li>
+  <span class="marker" aria-hidden="true">!</span>
+  {% if item.action_kind == "classify_instrument" %}
+  <span class="what">
+    <strong>Classification</strong> —
+    {{ item.instrument_name }}
+    <span class="meta"> · {{ item.detail }}</span>
+  </span>
+  <a href="{{ url_for('instruments.edit_classification', instrument_id=item.instrument_id) }}">Classify →</a>
+  {% elif item.action_kind in ["fixed_deposit_terms", "fixed_deposit_disposition"] %}
+  <span class="what">
+    <strong>Fixed deposit</strong> — {{ item.instrument_name }} · {{ item.account_name }}
+    <span class="meta"> · {{ item.detail }}</span>
+  </span>
+  {% if item.action_kind == "fixed_deposit_disposition" %}
+  <a href="{{ url_for('fixed_deposits.disposition', registration_id=item.registration_id, as_of=summary.as_of_date.isoformat()) }}">Record disposition →</a>
+  {% else %}
+  <a href="{{ url_for('fixed_deposits.edit', registration_id=item.registration_id, as_of=summary.as_of_date.isoformat()) }}">Review terms →</a>
+  {% endif %}
+  {% else %}
+  <span class="what">
+    <strong>{% if item.kind == "missing" %}Missing{% else %}{{ stale_label(item.stale_sources) }}{% endif %}</strong> —
+    {% if item.subject_kind == "cash" %}{{ badge("warning", "Cash") }} {% endif %}
+    {{- item.instrument_name }} ·
+    {% if item.affected_account_names|length > 1 %}
+      affects {{ item.affected_account_names|join(", ") }}
+    {% else %}
+      {{ item.account_name }}
+    {% endif %}
+    <span class="meta"> · {{ item.detail }}</span>
+  </span>
+  <a href="{{ values_update_url(
+      item.missing_source if item.kind == "missing" else item.action_source,
+      instrument_id=item.instrument_id, registration_id=item.registration_id,
+      base_currency=item.native_currency, quote_currency=item.reporting_currency,
+      guided_setup=guided_setup) }}">Update →</a>
+  {% endif %}
+</li>
+{%- endmacro %}

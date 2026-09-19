@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, wt_field, wt_checkbox, currency_datalist %}
+{% block title %}Retirement income{% endblock %}
+{% block heading %}{{ "Edit" if income else "Add" }} retirement income{% endblock %}
+{% block content %}
+<p>Enter external income available after tax. Do not add dividends or maturity principal already represented in modelled portfolio returns or capital.</p>
+<p class="hint">A full annual payment is available at a retirement-year boundary only if that date falls within the eligible dates, inclusive. No proration or pre-retirement payments. Inflation compounds on anniversaries of the first eligible date; leave the last date blank for continuing income.</p>
+{{ error_summary(form) }}
+<form method="post" class="stack" novalidate>
+  {{ form.hidden_tag() }}{% set focus = namespace(used=false) %}
+  {% for name in ["name", "annual_amount", "currency_code", "start_date", "end_date", "inflation_percent"] %}{% set field = form[name] %}
+    {{ wt_field(field, required=(name != "end_date"), autofocus=(true if field.errors and not focus.used else false), currency_suggest=(name == "currency_code")) }}
+    {% if field.errors %}{% set focus.used=true %}{% endif %}
+  {% endfor %}
+  <div class="form-actions">{{ form.save_income(class_="btn btn-primary") }} <a href="{{ url_for('retirement.index') }}">Back to Retirement</a></div>
+</form>
+{% if income %}<section class="card stack"><h2>Remove planned income</h2>
+  {{ error_summary(remove_form) }}<form method="post" novalidate>{{ remove_form.hidden_tag() }}
+    {{ wt_checkbox(remove_form.confirm_remove, autofocus=(remove_form.confirm_remove.errors|length > 0)) }}
+    {{ remove_form.remove_income(class_="btn") }}
+  </form></section>{% endif %}
+{{ currency_datalist() }}
+{% endblock %}

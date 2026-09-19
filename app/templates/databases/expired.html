@@ -1,0 +1,6 @@
+{% extends 'databases/base.html' %}
+{% block title %}Choose your database again{% endblock %}
+{% block content %}
+<div class="database-intro"><h1>Choose your database again</h1><p>LookThrough may have restarted, the file may have changed, or this form may have expired. Nothing was saved by this request.</p></div>
+<p><a class="btn btn-primary" href="{{ url_for('chooser') }}">Choose a database</a></p>
+{% endblock %}

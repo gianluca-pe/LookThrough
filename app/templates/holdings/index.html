@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% from "_macros.html" import as_of_form, empty_state, money, money_missing, badge, values_update_url, stale_label, sort_th, subtotal_status with context %}
+{% block title %}Holdings{% endblock %}
+{% block heading %}Holdings{% endblock %}
+{% block as_of %}
+<span class="as-of">Values as of {{ as_of_date|display_date }} · reporting in {{ reporting_currency }}</span>
+{% endblock %}
+{% block content %}
+<p class="form-actions">
+  <a class="btn btn-primary" href="{{ url_for('positions.new') }}">Add existing holding</a>
+</p>
+
+{% if holdings or summary.cash_balances %}
+{{ as_of_form("positions.holdings", as_of_date, extra_params={"sort": sort_by, "direction": sort_direction, "cash_sort": cash_sort_by, "cash_direction": cash_direction}) }}
+<p><a class="btn" href="{{ url_for('positions.export_holdings_csv', as_of=as_of_date.isoformat()) }}">Export current Holdings CSV</a></p>
+
+{% set cash_sort_params = {"cash_sort": cash_sort_by, "cash_direction": cash_direction} %}
+<section class="card" aria-labelledby="investments-heading">
+  <h2 id="investments-heading">Investments</h2>
+  {% if holdings %}
+  <div class="table-wrap">
+  <table class="data">
+    <thead>
+      <tr>
+        {{ sort_th("positions.holdings", "instrument", "Instrument", extra_params=cash_sort_params, anchor="investments-heading") }}
+        {{ sort_th("positions.holdings", "account", "Account", extra_params=cash_sort_params, anchor="investments-heading") }}
+        {{ sort_th("positions.holdings", "classification", "Classification", extra_params=cash_sort_params, anchor="investments-heading") }}
+        <th scope="col" class="num">Quantity</th>
+        <th scope="col" class="num">Native value</th>
+        {{ sort_th("positions.holdings", "reporting", "Reporting value", numeric=true, extra_params=cash_sort_params, anchor="investments-heading") }}
+        <th scope="col">Sources</th>
+        <th scope="col">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in holdings %}
+      <tr>
+        <th scope="row">{{ row.instrument_name }}</th>
+        <td class="small">{{ row.account_name }}</td>
+        <td class="small">
+          {% if row.role_weights %}
+            {% for rw in row.role_weights %}{{ economic_role_labels[rw.code] }}{% if rw.weight_decimal != 1 %} {{ rw.weight_decimal|percentage_amount(none) }}%{% endif %}{{ ", " if not loop.last }}{% endfor %}
+          {% else %}
+          <span class="meta">Unclassified</span><br>
+          <a href="{{ url_for('instruments.edit_classification', instrument_id=row.instrument_id) }}"
+             aria-label="Classify {{ row.instrument_name }}">Classify →</a>
+          {% endif %}
+          {% if row.fire_bucket_code %}<br><span class="meta">{{ fire_bucket_labels[row.fire_bucket_code] }}</span>
+          {% elif row.role_weights %}<br>
+          <a href="{{ url_for('instruments.edit_classification', instrument_id=row.instrument_id) }}"
+             aria-label="Set FIRE bucket for {{ row.instrument_name }}">Set bucket →</a>
+          {% endif %}
+        </td>
+        <td class="num">
+          {% if row.quantity is not none %}
+          <span class="money">{{ row.quantity|trim_decimal|money_amount(none) }}</span>
+          {% else %}
+          <span class="meta">Statement value</span>
+          {% endif %}
+        </td>
+        <td class="num">
+          {% if row.native_amount is not none %}
+          {{ money({"amount": row.native_amount, "currency": row.native_currency}) }}
+          {% else %}
+          {{ money_missing(row.missing_reason, values_update_url(row.missing_source, instrument_id=row.instrument_id, registration_id=row.registration_id, base_currency=row.native_currency, quote_currency=row.reporting_currency)) }}
+          {% endif %}
+        </td>
+        <td class="num">
+          {% if row.reporting_amount is not none %}
+          {{ money({"amount": row.reporting_amount, "currency": row.reporting_currency}) }}
+            {% if row.portfolio_share_decimal < 1 or row.present_access_decimal < 1
+                  or row.term_liquidity_reporting_amount %}
+          <br><span class="meta">included
+            {{ money({"amount": row.included_reporting_amount, "currency": row.reporting_currency}) }}
+            {%- if row.term_liquidity_reporting_amount %} · term liquidity
+            {{ money({"amount": row.term_liquidity_reporting_amount, "currency": row.reporting_currency}) }}
+            {%- endif %}
+            {%- if row.accessible_reporting_amount != row.included_reporting_amount %} · accessible now
+            {{ money({"amount": row.accessible_reporting_amount, "currency": row.reporting_currency}) }}
+            {%- endif %}</span>
+            {% endif %}
+          {% elif row.native_amount is not none %}
+          {{ money_missing(row.missing_reason, values_update_url(row.missing_source, instrument_id=row.instrument_id, registration_id=row.registration_id, base_currency=row.native_currency, quote_currency=row.reporting_currency)) }}
+          {% else %}
+          {{ money_missing() }}
+          {% endif %}
+        </td>
+        <td class="meta">
+          {% if row.value_date %}{{ row.value_date|display_date }}
+          <span class="faint">{{ "price" if row.source_mode == "price" else "statement" }}</span>
+          {% else %}—{% endif %}
+          <br>
+          {% if row.fx_date %}
+            <span class="faint">FX {{ row.fx_date|display_date }}
+            {%- if row.fx_path and row.fx_path|length > 2 %} via {{ row.fx_path[1:-1]|join(", ") }}{% endif %}</span>
+          {% elif row.native_currency == row.reporting_currency %}<span class="faint">reporting ccy</span>
+          {% else %}<span class="faint">FX —</span>{% endif %}
+        </td>
+        <td>
+          <div class="cell-stack">
+            {% if row.status == "stale" %}{{ badge("stale", stale_label(row.stale_sources)) }}
+            {% elif row.status == "missing" %}{{ badge("missing", "Missing") }}{% endif %}
+            {% if row.fixed_deposit %}
+              {% if row.fixed_deposit.maturity_status == "missing_terms" %}
+                {{ badge("missing", "FD terms missing") }}
+              {% elif row.fixed_deposit.maturity_status == "approaching" %}
+                {{ badge("warning", "Matures soon") }}
+              {% elif row.fixed_deposit.maturity_status == "due" %}
+                {{ badge("warning", "Due today") }}
+              {% elif row.fixed_deposit.maturity_status == "overdue" %}
+                {{ badge("warning", "Maturity overdue") }}
+              {% endif %}
+              {% if row.fixed_deposit.maturity_date %}<span class="meta">matures {{ row.fixed_deposit.maturity_date|display_date }}</span>{% endif %}
+              {% if row.fixed_deposit.maturity_status in ["due", "overdue"] %}
+              <a href="{{ url_for('fixed_deposits.disposition', registration_id=row.registration_id, as_of=as_of_date.isoformat()) }}"
+                 aria-label="Record maturity disposition for {{ row.instrument_name }}">Record disposition →</a>
+              {% else %}
+              <a href="{{ url_for('fixed_deposits.edit', registration_id=row.registration_id, as_of=as_of_date.isoformat()) }}"
+                 aria-label="{{ 'Add' if row.fixed_deposit.maturity_status == 'missing_terms' else 'Edit' }} fixed deposit terms for {{ row.instrument_name }}">{{ "Add terms" if row.fixed_deposit.maturity_status == "missing_terms" else "Edit terms" }} →</a>
+              {% endif %}
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th scope="row">Investments subtotal (gross)</th>
+        <td colspan="4"></td>
+        <td class="num">
+          {%- if summary.investment_reporting_amount is not none %}
+          {{ money({"amount": summary.investment_reporting_amount, "currency": summary.reporting_currency}) }}
+          {%- else %}{{ money_missing() }}{% endif %}
+        </td>
+        <td colspan="2" class="meta">
+          {{- subtotal_status("positions", summary.investment_status, summary.position_count, summary.reporting_valued_count) -}}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+
+  <p class="meta">Quantity-tracked positions are valued from your transactions and the latest
+     eligible price; statement-valued positions from the latest dated statement value.
+     Fixed-deposit principal remains on its statement-value path while maturity controls
+     term-liquidity status. Anything missing shows its reason, never a zero.</p>
+  {% else %}
+  {{ empty_state(body="No investment positions as of this date.", standalone=false) }}
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="cash-heading">
+  <h2 id="cash-heading">Cash</h2>
+  {% if summary.cash_balances %}
+  <div class="table-wrap">
+  <table class="data">
+    <thead>
+      <tr>
+        <th scope="col">Account</th>
+        <th scope="col" class="num">Native value</th>
+        {{ sort_th("positions.holdings", "reporting", "Reporting value", numeric=true,
+                   extra_params={"sort": sort_by, "direction": sort_direction},
+                   anchor="cash-heading",
+                   sort_param="cash_sort", direction_param="cash_direction",
+                   current_sort=cash_sort_by, current_direction=cash_direction) }}
+        <th scope="col">Sources</th>
+        <th scope="col">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in cash_balances %}
+      <tr>
+        <td><strong>{{ row.account_name }}</strong><br>
+          <span class="faint">{{ row.institution_name }}</span></td>
+        <td class="num">{{ money({"amount": row.native_amount, "currency": row.native_currency}) }}</td>
+        <td class="num">
+          {% if row.reporting_amount is not none %}
+          {{ money({"amount": row.reporting_amount, "currency": row.reporting_currency}) }}
+            {% if row.portfolio_share_decimal < 1 or row.present_access_decimal < 1 %}
+          <br><span class="meta">included
+            {{ money({"amount": row.included_reporting_amount, "currency": row.reporting_currency}) }}
+            {%- if row.accessible_reporting_amount != row.included_reporting_amount %} · accessible now
+            {{ money({"amount": row.accessible_reporting_amount, "currency": row.reporting_currency}) }}
+            {%- endif %}</span>
+            {% endif %}
+          {% else %}
+          {{ money_missing(row.missing_reason, values_update_url("fx", base_currency=row.native_currency, quote_currency=row.reporting_currency)) }}
+          {% endif %}
+        </td>
+        <td class="meta">
+          {% if row.checkpoint_date %}
+            {{ row.checkpoint_date|display_date }}
+            <span class="faint">confirmed{% if row.latest_cash_effect_date and row.latest_cash_effect_date > row.checkpoint_date %} + later activity{% endif %}</span>
+          {% elif row.latest_cash_effect_date %}
+            {{ row.latest_cash_effect_date|display_date }}
+            <span class="faint">calculated</span>
+          {% else %}—{% endif %}
+          <br>
+          {% if row.fx_date %}
+            <span class="faint">FX {{ row.fx_date|display_date }}
+            {%- if row.fx_path and row.fx_path|length > 2 %} via {{ row.fx_path[1:-1]|join(", ") }}{% endif %}</span>
+          {% elif row.native_currency == row.reporting_currency %}<span class="faint">reporting ccy</span>
+          {% else %}<span class="faint">FX —</span>{% endif %}
+        </td>
+        <td>
+          {% if row.status == "stale" %}{{ badge("stale", "Stale FX") }}
+          {% elif row.status == "missing" %}{{ badge("missing", "Missing") }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th scope="row">Cash subtotal (gross)</th>
+        <td></td>
+        <td class="num">
+          {%- if summary.cash_reporting_amount is not none %}
+          {{ money({"amount": summary.cash_reporting_amount, "currency": summary.reporting_currency}) }}
+          {%- else %}{{ money_missing() }}{% endif %}
+        </td>
+        <td colspan="2" class="meta">
+          {{- subtotal_status("cash balances", summary.cash_status, summary.cash_balance_count, summary.cash_reporting_valued_count) -}}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+
+  <p class="meta">Confirmed balances plus later cash activity, per account and currency.
+     Aggregate-valued wrappers and accounts settled elsewhere are not listed here — their
+     value is already counted where it belongs. An account you have never confirmed or
+     moved cash in does not appear; absence is not a zero.</p>
+  {% else %}
+  {{ empty_state(body="No confirmed or calculated cash as of this date.", standalone=false) }}
+  {% endif %}
+</section>
+
+<p class="form-actions">
+  <a class="btn btn-plain" href="{{ url_for('activity.history') }}">Activity history</a>
+</p>
+
+{% else %}
+{% call empty_state() %}
+  <p>No positions yet. <a href="{{ url_for('positions.new') }}">Add what you hold today</a>,
+     then give each position a price or statement value in
+     <a href="{{ url_for('positions.show_values') }}">Update values</a>.</p>
+{% endcall %}
+{% endif %}
+{% endblock %}

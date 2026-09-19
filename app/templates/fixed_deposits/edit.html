@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, currency_datalist, error_summary, first_error, wt_field %}
+{% block title %}Fixed deposit terms — {{ registration.instrument_name }}{% endblock %}
+{% block heading %}Fixed deposit terms{% endblock %}
+{% block content %}
+<p class="meta">{{ registration.instrument_name }} · {{ registration.institution_name }} · {{ registration.account_name }}</p>
+<p>Record the deposit's dates and intended next step. This does not change its
+   principal, statement value, cash, or activity history.</p>
+
+{% if maturity.maturity_status == "missing_terms" %}
+<p>{{ badge("missing", "Terms missing") }} Until maturity is known, this position is
+   conservatively treated as term liquidity rather than accessible now.</p>
+{% elif maturity.maturity_status == "approaching" %}
+<p>{{ badge("warning", "Approaching maturity") }} Matures
+   {{ maturity.maturity_date|display_date }}
+   ({{ maturity.days_to_maturity }} day{{- "s" if maturity.days_to_maturity != 1 }}).</p>
+{% elif maturity.maturity_status == "due" %}
+<p>{{ badge("warning", "Due today") }} Matures today,
+   {{ maturity.maturity_date|display_date }} — no cash or rollover is posted automatically.</p>
+{% elif maturity.maturity_status == "overdue" %}
+<p>{{ badge("warning", "Maturity overdue") }} Matured
+   {{ maturity.maturity_date|display_date }}
+   ({{ maturity.days_to_maturity|abs }} day{{- "s" if maturity.days_to_maturity != -1 }} ago) —
+   no cash or rollover is posted automatically.</p>
+{% else %}
+<p class="meta">Matures {{ maturity.maturity_date|display_date }} — within the agreed term.</p>
+{% endif %}
+
+{% set first_err = first_error(form, ["currency_code", "start_date", "maturity_date", "annual_rate_percent", "expected_maturity_proceeds_amount", "maturity_action", "notes"]) %}
+
+{{ error_summary(form) }}
+<form class="stack" method="post" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.currency_code, required=true, currency_suggest=true,
+              autofocus=(first_err == "currency_code"),
+              hint="Must match this deposit's valuation currency, " ~ registration.currency_code ~ ".") }}
+  {{ wt_field(form.start_date, required=true,
+              autofocus=(first_err == "start_date"),
+              hint="Must match the position's opening date" ~ (", " ~ registration.opening_date|display_date if registration.opening_date else "") ~ "; saving terms does not rewrite history.") }}
+  {{ wt_field(form.maturity_date, required=true,
+              autofocus=(first_err == "maturity_date"),
+              hint="After the start date; drives term-liquidity status and maturity attention.") }}
+  {{ wt_field(form.annual_rate_percent,
+              autofocus=(first_err == "annual_rate_percent"),
+              hint="Optional. Missing is valid and does not invent interest or a zero rate.") }}
+  {{ wt_field(form.expected_maturity_proceeds_amount,
+              autofocus=(first_err == "expected_maturity_proceeds_amount"),
+              hint="Optional amount quoted by the bank. Reference only — never used as current value, accrued interest, or an automatic cash posting.") }}
+  {{ wt_field(form.maturity_action, required=true,
+              autofocus=(first_err == "maturity_action"),
+              hint="Planning intent only; no maturity transaction is posted automatically.") }}
+  {{ wt_field(form.notes, autofocus=(first_err == "notes"),
+              hint="Optional confirmation reference or reminder.") }}
+  <div class="form-actions">
+    {{ form.save_terms(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('positions.holdings', as_of=return_as_of.isoformat()) if return_as_of else url_for('positions.holdings') }}">Cancel</a>
+  </div>
+</form>
+{% if maturity.maturity_status in ["due", "overdue"] %}
+<p class="form-actions"><a class="btn btn-primary" href="{{ url_for('fixed_deposits.disposition', registration_id=registration.id, as_of=return_as_of.isoformat()) if return_as_of else url_for('fixed_deposits.disposition', registration_id=registration.id) }}">Record maturity disposition</a></p>
+{% endif %}
+{{ currency_datalist() }}
+{% endblock %}

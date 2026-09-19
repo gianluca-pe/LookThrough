@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, wt_checkbox %}
+{% block title %}Confirm restore{% endblock %}
+{% block heading %}Confirm restore{% endblock %}
+{% block content %}
+
+<section class="card stack" aria-labelledby="preview-heading">
+  <h2 id="preview-heading">Validated backup</h2>
+  <p>The backup passed structure, data-type, constraint, and relationship checks in a disposable database. The active database is still unchanged.</p>
+  {% if preview.version < 11 %}<p>This older backup has been converted to exact storage: monetary values use their currency’s decimal places, and units, prices and FX rates use up to six. Review the conversion records in a full JSON export after restore; your original backup file is unchanged.</p>{% endif %}
+  {% if preview.table_counts.decimal_conversions %}<p>{{ preview.table_counts.decimal_conversions }} before/after conversion records are included with this backup.</p>{% endif %}
+  <p><strong>{{ preview.total_records }} source records</strong> · backup version {{ preview.version }} · created {{ preview.created_at|display_date }}</p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th scope="col">Source table</th><th scope="col" class="num">Records</th></tr></thead>
+      <tbody>
+      {% for name, count in preview.table_counts.items() %}
+        <tr><td>{{ name|replace('_', ' ')|title }}</td><td class="num">{{ count }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('maintenance.backup_restore') }}" novalidate>
+    {{ form.hidden_tag() }}
+    {{ error_summary(form) }}
+    {{ wt_checkbox(form.confirm_restore, required=true, autofocus=(true if form.confirm_restore.errors else false)) }}
+    <p class="form-actions">{{ form.submit(class_="btn btn-primary") }}<button class="btn" type="submit" name="cancel" value="1" formnovalidate>Cancel</button>
+      <a class="btn btn-plain" href="{{ url_for('maintenance.settings') }}">Back to Settings</a></p>
+  </form>
+</section>
+{% endblock %}

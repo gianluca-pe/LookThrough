@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, wt_field, currency_datalist %}
+{% block title %}{{ "Portfolio details" if setup.portfolio else "Set up portfolio" }}{% endblock %}
+{% block heading %}{{ "Portfolio details" if setup.portfolio else "Set up your portfolio" }}{% endblock %}
+{% block content %}
+{% set first_err = first_error(form, ["name", "reporting_currency_code", "annual_spending_amount", "annual_spending_currency_code", "default_as_of_date"]) %}
+
+<div class="setup-layout">
+  {% include "setup/_steps.html" %}
+
+  <div class="setup-content">
+    {% if not setup.portfolio %}
+    <p class="muted" style="max-width: 34rem">Start with the basics. You can change these later in
+       Settings, and you can finish the remaining steps another time — everything is saved locally.</p>
+    {% endif %}
+
+    {{ error_summary(form) }}
+
+    <form class="stack" method="post" action="{{ url_for('setup.save_portfolio') }}" novalidate>
+      {{ form.hidden_tag() }}
+      {{ wt_field(form.name, required=true,
+                  autofocus=(first_err == "name"),
+                  hint="What you call this portfolio — only you see it.") }}
+      {{ wt_field(form.reporting_currency_code, required=true, currency_suggest=true,
+                  autofocus=(first_err == "reporting_currency_code"),
+                  hint="Three-letter code, e.g. SGD, EUR, USD. Your saved default valuation view — totals are shown in this currency.") }}
+      {% if retirement_plan %}<p>Core/Flexible spending and inflation are managed in <a href="{{ url_for('retirement.index') }}">Retirement</a>.</p>{% else %}
+      {{ wt_field(form.annual_spending_amount, required=true, input_class="money-input",
+                  autofocus=(first_err == "annual_spending_amount"),
+                  hint="Your current annual spending amount. Used for the ten-year funding view.") }}
+      {{ wt_field(form.annual_spending_currency_code, required=true, currency_suggest=true,
+                  autofocus=(first_err == "annual_spending_currency_code"),
+                  hint="The currency this spending is actually in. Changing the reporting view never changes its meaning.") }}
+      {% endif %}
+      {{ wt_field(form.default_as_of_date,
+                  autofocus=(first_err == "default_as_of_date"),
+                  hint="Optional. Values you enter are shown as of this date by default.") }}
+      <div class="form-actions">
+        {{ form.save_and_continue(class_="btn btn-primary") }}
+        {{ form.save_and_finish_later(class_="btn") }}
+      </div>
+    </form>
+  </div>
+</div>
+{{ currency_datalist() }}
+{% endblock %}

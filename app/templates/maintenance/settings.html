@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, money, money_missing %}
+{% block title %}Settings & backup{% endblock %}
+{% block heading %}Settings & backup{% endblock %}
+{% block content %}
+
+<section class="card stack" aria-labelledby="portfolio-settings-heading">
+  <h2 id="portfolio-settings-heading">Portfolio settings</h2>
+  {% if portfolio %}
+  <dl class="details-list">
+    <div><dt>Name</dt><dd>{{ portfolio.name }}</dd></div>
+    <div><dt>Default reporting currency</dt><dd>{{ portfolio.reporting_currency_code }}</dd></div>
+    {% if retirement_plan %}<div><dt>Spending and inflation</dt><dd>Managed by the adopted <a href="{{ url_for('retirement.index') }}">Retirement plan</a>.</dd></div>{% else %}
+    <div><dt>Annual spending</dt><dd>{% if portfolio.annual_spending_amount is not none %}{{ money({"amount": portfolio.annual_spending_amount, "currency": portfolio.annual_spending_currency_code}) }}{% else %}{{ money_missing("not set") }}{% endif %}</dd></div>
+    <div><dt>Annual inflation assumption</dt><dd>{% if portfolio.annual_inflation_decimal is not none %}{{ portfolio.annual_inflation_decimal|percentage_amount(2) }}%{% else %}{{ money_missing("not set") }}{% endif %}</dd></div>
+    {% endif %}
+  </dl>
+  <p class="form-actions">
+    <a class="btn" href="{{ url_for('setup.show', step='portfolio') }}">Edit portfolio details</a>
+    <a class="btn" href="{{ url_for('retirement.index') }}">Retirement planning</a>
+    <a class="btn" href="{{ url_for('snapshots.index') }}">Portfolio snapshots</a>
+  </p>
+  {% else %}
+  <p>No portfolio is configured in this database. You can start setup or restore a validated backup below.</p>
+  <p><a class="btn" href="{{ url_for('setup.show') }}">Start setup</a></p>
+  {% endif %}
+</section>
+
+{% if portfolio %}{% include 'maintenance/_fx_settings.html' %}{% endif %}
+
+<section class="card stack" aria-labelledby="exports-heading">
+  <h2 id="exports-heading">Exports</h2>
+  <p>CSV files are readable extracts. The JSON backup below is the complete, restorable local dataset.</p>
+  {% if portfolio %}
+  <p class="form-actions">
+    <a class="btn" href="{{ url_for('positions.export_holdings_csv') }}">Export current Holdings CSV</a>
+    <a class="btn" href="{{ url_for('activity.export_csv') }}">Export all Activity CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('maintenance.backup_export') }}">Download full JSON backup</a>
+  </p>
+  {% else %}
+  <p class="meta">Exports become available after setup or restore.</p>
+  {% endif %}
+  {% if table_counts %}<p class="meta">The current database contains {{ total_records }} records across {{ table_counts|length }} backed-up tables.</p>{% endif %}
+</section>
+
+<section class="card stack" aria-labelledby="restore-heading">
+  <h2 id="restore-heading">Restore a backup</h2>
+  <p>The selected file is first validated in a disposable database. Nothing active is changed until the validation passes, you review the record counts, and you confirm.</p>
+  <form method="post" action="{{ url_for('maintenance.backup_preview') }}" enctype="multipart/form-data" novalidate>
+    {{ restore_form.hidden_tag() }}
+    {{ error_summary(restore_form) }}
+    <div class="field">
+      <label for="backup_file">{{ restore_form.backup_file.label.text }} <span class="req">(required)</span></label>
+      {{ restore_form.backup_file(accept="application/json,.json", **({"aria-invalid": "true", "aria-describedby": "backup_file-error", "autofocus": True} if restore_form.backup_file.errors else {"aria-describedby": "backup_file-hint"})) }}
+      {% if restore_form.backup_file.errors %}<div class="field-error" id="backup_file-error">{{ restore_form.backup_file.errors[0] }}</div>
+      {% else %}<div class="hint" id="backup_file-hint">The lookthrough-backup-….json file downloaded from this app. It is validated before anything changes.</div>{% endif %}
+    </div>
+    <p class="form-actions">{{ restore_form.submit(class_="btn") }}</p>
+  </form>
+</section>
+
+<section class="card" aria-labelledby="privacy-heading">
+  <h2 id="privacy-heading">Local data</h2>
+  {% if dataset_filename %}<p>This tab is using <strong>{{ dataset_filename }}</strong>. Export and restore apply to this database only.</p><p class="database-filename">{{ dataset_path }}</p><p><a href="{{ database_chooser_url }}">Change database or create a new one</a></p>{% endif %}
+  <p>LookThrough runs on this computer and binds to localhost. These export and restore actions do not upload portfolio data or call a remote service.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, wt_field, currency_datalist %}
+{% block title %}Edit {{ account.name }}{% endblock %}
+{% block heading %}Edit account{% endblock %}
+{% block content %}
+<p class="meta">{{ account.institution_name }} · {{ account.account_type|capitalize }} · {{ account.default_currency_code }}</p>
+
+{% set first_err = first_error(form, ["name", "reference", "cash_tracking_mode", "cash_settlement_account_id", "portfolio_share_percent", "present_access_percent", "earliest_access_date", "access_note", "currency_code", "confirmed_balance_amount", "effective_date", "source_note"]) %}
+
+{{ error_summary(form) }}
+<form class="stack" method="post" novalidate>
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.name, required=true, autofocus=(first_err == "name")) }}
+  {{ wt_field(form.reference, autofocus=(first_err == "reference"),
+              hint="Optional account, policy, or bank reference — kept separate from the name.") }}
+  {{ wt_field(form.cash_tracking_mode, required=true, autofocus=(first_err == "cash_tracking_mode"),
+              hint="Choose aggregate only when the account's one reported value already includes cash.") }}
+
+  {% if form.cash_settlement_account_id.choices|length > 1 %}
+  {{ wt_field(form.cash_settlement_account_id,
+              autofocus=(first_err == "cash_settlement_account_id"),
+              hint="Where cash from future Buy/Sell/Dividend activity lands. Existing balances and past activities stay where they are.") }}
+  {% endif %}
+
+  {{ wt_field(form.portfolio_share_percent, required=true, input_class="money-input",
+              autofocus=(first_err == "portfolio_share_percent"),
+              hint="The portion of this account included in your portfolio. This is your planning input; the app does not determine legal ownership.") }}
+  {{ wt_field(form.present_access_percent, required=true, input_class="money-input",
+              autofocus=(first_err == "present_access_percent"),
+              hint="How much of the included share can be used now. Transaction authority over the entire account does not increase your portfolio share.") }}
+  {{ wt_field(form.earliest_access_date,
+              autofocus=(first_err == "earliest_access_date"),
+              hint="Optional. When this account becomes usable, if it is locked until a date. Explains a restriction; it never overrides the percentage.") }}
+  {{ wt_field(form.access_note,
+              autofocus=(first_err == "access_note"),
+              hint="Optional. Anything worth remembering about getting money out; it never overrides the percentage.") }}
+
+  {% if account.cash_tracking_mode == "separate_cash" %}
+  <p class="meta">Switching to “included in aggregate”: existing cash confirmations stay in the
+     audit trail but no longer count while cash is inside the aggregate value.</p>
+  {% endif %}
+
+  {% if requires_fresh_confirmation %}
+  <details class="disclosure" open>
+    <summary>Fresh cash confirmation — required when switching to separate cash tracking</summary>
+    <div class="stack" style="margin-top: var(--space-3)">
+      <p class="meta">Switching to “tracked separately” needs one confirmed balance to start from,
+         so an older confirmation cannot silently become current again. Any previously active
+         confirmations are superseded; no deposit, withdrawal, income, or expense is created.</p>
+      {{ wt_field(form.currency_code, required=true, currency_suggest=true,
+                  autofocus=(first_err == "currency_code")) }}
+      {{ wt_field(form.confirmed_balance_amount, required=true, input_class="money-input",
+                  autofocus=(first_err == "confirmed_balance_amount"),
+                  hint="The balance shown by the broker or statement.") }}
+      {{ wt_field(form.effective_date, required=true,
+                  autofocus=(first_err == "effective_date"),
+                  hint="Treated as end-of-day: activity on this date is already included.") }}
+      {{ wt_field(form.source_note, autofocus=(first_err == "source_note"),
+                  hint="Optional statement reference.") }}
+    </div>
+  </details>
+  {% endif %}
+
+  <div class="form-actions">
+    {{ form.save_account(class_="btn btn-primary") }}
+    <a class="btn btn-plain" href="{{ url_for('accounts.detail', account_id=account.id) }}">Cancel</a>
+  </div>
+</form>
+{{ currency_datalist() }}
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import error_summary, wt_field, first_error %}
+{% block title %}Retirement — Monte Carlo{% endblock %}
+{% block heading %}How well does this retirement plan hold up?{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script><script src="{{ static_url('js/monte_carlo.js') }}" defer></script>{% endblock %}
+{% block content %}
+<div class="retirement-workspace mc-workspace">
+<p class="lede">Test the reviewed lifestyle across changing investment returns. Compare your current model mix with one alternative, using the same market paths.</p>
+<section class="card"><h2>The lifestyle and horizon being tested</h2>{% include 'retirement/_monte_carlo_assumptions.html' %}
+<p><a href="{{ url_for('retirement.index', review=review_token) }}">Change Core, returns, inflation or retirement timing</a></p>
+<p class="hint">This illustrative model varies returns with fixed inflation. It does not explicitly model persistent crises or changing market relationships.</p>
+<details class="disclosure"><summary>Illustrative USD profile — assumptions and limitations</summary>{% include 'retirement/_monte_carlo_profile.html' %}</details>
+</section>
+<section class="card"><h2>Compare allocations</h2>
+<p>Both mixes rebalance annually within available capital. The current target uses your starting assets, with cash and FDs modelled as Liquidity.</p>
+{% if experiment.adjustments %}<p class="notice">FD risk adjustment: {% for fd in experiment.adjustments %}{{ fd.source_name }} (USD {{ fd.amount|money_amount }}){{ '; ' if not loop.last }}{% endfor %} uses Liquidity risk and return here. Recorded classifications are retained.</p>{% endif %}
+<form method="post" action="{{ url_for('monte_carlo.index') }}" id="mc-form" data-path-count="{{ path_count }}" novalidate>
+{{ form.hidden_tag() }}{{ error_summary(form) }}
+{% set first = first_error(form, ['flexible_amount','equity_percent','income_percent','liquidity_percent','alternatives_percent']) %}
+{{ wt_field(form.flexible_amount, required=true, autofocus=(first == 'flexible_amount'), hint='Choose the calculated allowance or less, including zero. This changes only this experiment.') }}
+<p class="meta">Calculated allowance: USD {{ allowance|money_amount }}/year in today's money.</p>
+<div class="table-wrap"><table class="data mc-allocation"><caption>Allocation percentages; the alternative must total exactly 100%</caption><thead><tr><th scope="col">Role</th><th scope="col" class="num">Recorded</th><th scope="col" class="num">Current model</th><th scope="col">Alternative</th></tr></thead><tbody>
+{% for role in roles %}<tr><th scope="row">{{ role|capitalize }}</th><td class="num">{{ experiment.recorded_percentages[role]|money_amount(2) }}%</td><td class="num">{{ experiment.current_percentages[role]|money_amount(2) }}%</td><td>{{ wt_field(form[role ~ '_percent'], required=true, autofocus=(first == role ~ '_percent')) }}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="hint">{{ path_count|money_amount(0) }} paths per allocation. Larger portfolios and longer horizons take longer. With JavaScript enabled, the bar shows completed paths for both allocations. Repeating unchanged inputs uses the same market sequences.</p>
+{{ form.run_comparison(class='btn btn-primary') }}<p id="mc-run-status" role="status" aria-live="polite"></p>
+</form>
+</section>
+{% if result %}
+<div id="mc-results">
+<section class="card"><h2>Results for the tested lifestyle</h2><p>Annual Flexible tested: <strong>USD {{ experiment.basis.plan.flexible_amount|money_amount }}</strong> in today's money.</p>{% include 'retirement/_monte_carlo_outcomes.html' %}</section>
+<section class="card"><h2>How much capital remains?</h2><p>USD in {{ basis.as_of_date|display_date }} purchasing power. The bands show the 10th–90th percentiles at each age; the line shows the median. They are distributions, not individual paths or guaranteed limits.</p>
+<p>Goal at age {{ experiment.basis.plan.final_age_years }}: <strong>USD {{ result.legacy_real|money_amount }} today = USD {{ result.legacy_nominal|money_amount }} nominal</strong>. The dashed reference is an end goal, not an annual minimum.</p>
+<div id="mc-charts" data-chart="monte-carlo" data-values="{{ chart|tojson|forceescape }}">
+<div class="mc-chart-grid">{% for allocation in result.allocations %}{% set index = loop.index0 %}{% set last = allocation.rows[-1] %}<section class="mc-chart-panel"><h3>{{ allocation.label }}</h3>
+<div class="chart-box chart-box-tall" role="img" aria-label="{{ allocation.label }} capital distribution; equivalent annual figures are in the report linked below."><canvas aria-hidden="true"></canvas></div>
+<p class="mc-readout" id="mc-readout-{{ index }}" aria-live="polite">Age {{ last.ending_age }} median: USD {{ last.real.median|money_amount }} today · USD {{ last.nominal.median|money_amount }} nominal.</p>
+</section>{% endfor %}</div>
+<div class="retirement-year-picker" hidden><label for="mc-year">Inspect capital at age <output id="mc-age" for="mc-year">{{ experiment.basis.plan.final_age_years }}</output></label><input type="range" id="mc-year" min="0" max="{{ result.allocations[0].rows|length - 1 }}" value="{{ result.allocations[0].rows|length - 1 }}" step="1"></div>
+</div>
+<p><a class="btn" id="mc-report-link" href="{{ url_for('monte_carlo.details', run=run_token) }}" target="_blank" rel="noopener">View / print report &amp; inspect a path <span class="meta">(new tab)</span></a></p>
+<noscript><p>The report contains all chart values and individual-path selection. Comparisons work without JavaScript.</p></noscript>
+</section>
+</div>
+{% endif %}
+<p class="hint">Experiments do not adopt a spending plan or change holdings. Use the report's Print command to keep a local copy; this version has no named Monte Carlo archive.</p>
+</div>
+{% endblock %}

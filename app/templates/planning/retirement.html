@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, error_summary, money, wt_field %}
+{% block title %}Retirement projection{% endblock %}
+{% block heading %}Retirement projection{% endblock %}
+{% block scripts %}
+{% if projection_chart %}
+<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script>
+<script src="{{ static_url('js/charts.js') }}" defer></script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<p>A deterministic estimate using the current portfolio and only the assumptions you enter. It is not recorded performance or a guarantee.</p>
+
+<form method="get" class="routine-date-form" novalidate>
+  <div class="field">
+    <label for="projection-as-of">Portfolio as of <span class="req">(required)</span></label>
+    <input id="projection-as-of" name="as_of" type="date" required value="{{ as_of_date.isoformat() }}"
+           {% if as_of_error %}aria-invalid="true" aria-describedby="projection-as-of-error" autofocus{% endif %}>
+    {% if as_of_error %}<div class="field-error" id="projection-as-of-error">{{ as_of_error }}</div>{% endif %}
+  </div>
+  <div class="form-actions"><button class="btn" type="submit">Use this portfolio date</button></div>
+</form>
+
+<section class="card stack" aria-labelledby="projection-assumptions-heading">
+  <h2 id="projection-assumptions-heading">Assumptions</h2>
+  <p class="meta">Spending is {{ money({"amount": portfolio.annual_spending_amount, "currency": portfolio.annual_spending_currency_code}) }} today and inflation is {% if portfolio.annual_inflation_decimal is not none %}{{ portfolio.annual_inflation_decimal|percentage_amount(2) }}%{% else %}not set{% endif %}. Edit those shared inputs under Funding assumptions.</p>
+  {{ error_summary(form) }}
+  <form method="post" class="stack" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="form-grid">
+      {{ wt_field(form.current_age_years, required=true, autofocus=true if form.current_age_years.errors else false) }}
+      {{ wt_field(form.withdrawal_start_age_years, required=true, autofocus=true if (not form.current_age_years.errors and form.withdrawal_start_age_years.errors) else false, hint="Withdrawals have not begun today.") }}
+      {{ wt_field(form.final_age_years, required=true, autofocus=true if (not form.current_age_years.errors and not form.withdrawal_start_age_years.errors and form.final_age_years.errors) else false) }}
+    </div>
+    <fieldset>
+      <legend>Nominal annual returns</legend>
+      <p class="hint">Owner-entered estimates before inflation. No defaults are supplied and no recorded history is used.</p>
+      <div class="form-grid">
+        {{ wt_field(form.equity_return_percent, required=true, input_class="money-input", autofocus=true if form.equity_return_percent.errors else false) }}
+        {{ wt_field(form.income_return_percent, required=true, input_class="money-input", autofocus=true if form.income_return_percent.errors else false) }}
+        {{ wt_field(form.liquidity_return_percent, required=true, input_class="money-input", autofocus=true if form.liquidity_return_percent.errors else false) }}
+        {{ wt_field(form.alternatives_return_percent, required=true, input_class="money-input", autofocus=true if form.alternatives_return_percent.errors else false) }}
+      </div>
+    </fieldset>
+    {{ wt_field(form.terminal_legacy_target_amount, input_class="money-input", hint="Optional amount to compare with the value at final age, in " ~ portfolio.reporting_currency_code ~ ".") }}
+    <div class="form-actions">
+      {{ form.save_projection(class_="btn btn-primary") }}
+      <a class="btn btn-plain" href="{{ url_for('planning.funding_assumptions') }}">Edit spending or inflation</a>
+    </div>
+  </form>
+</section>
+
+<section class="card stack" aria-labelledby="projection-outcome-heading">
+  <h2 id="projection-outcome-heading">Base-case outcome</h2>
+  {% if not projection.assumption %}
+  <p>Enter and save the ages and four return assumptions to calculate the projection.</p>
+  {% elif not projection.calculation_complete %}
+  {{ badge("missing", "Incomplete") }}
+  <p>The projection is withheld until its live portfolio inputs are complete.</p>
+  <ul>
+    {% for reason in projection.reasons %}
+    <li>{% if reason.kind == "missing_inflation" %}Annual inflation is not set. <a href="{{ url_for('planning.funding_assumptions') }}">Set funding assumptions →</a>
+        {% elif reason.kind == "missing_spending_fx" %}Annual spending cannot be converted to {{ projection.reporting_currency }}. <a href="{{ url_for('positions.show_values') }}#routine-fx-heading">Update FX rates →</a>
+        {% elif reason.kind == "incomplete_cash" %}At least one accessible separate-cash account has no complete balance. <a href="{{ url_for('positions.show_values') }}#routine-cash-heading">Update cash balances →</a>
+        {% elif reason.kind == "incomplete_sources" %}At least one retirement holding is missing a value, role, bucket, or fixed-deposit maturity. <a href="{{ url_for('positions.holdings') }}">Review Holdings →</a>
+        {% else %}A required projection input is missing.{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {% if projection.status == "stale" %}{{ badge("stale", "Stale inputs") }}
+  <p class="meta">Calculated with stale values or FX. <a href="{{ url_for('positions.show_values') }}">Update values →</a></p>{% endif %}
+  <dl class="details-list">
+    <div><dt>Projected capital at start</dt><dd>{{ money({"amount": projection.years[0].starting_value_amount, "currency": projection.reporting_currency}) }} <span class="meta">· included value less Projects</span></dd></div>
+    <div><dt>Value at age {{ projection.assumption.final_age_years }}</dt><dd>{{ money({"amount": projection.final_value_amount, "currency": projection.reporting_currency}) }}</dd></div>
+    <div><dt>First-year spending as % of projected capital</dt><dd>{% if projection.initial_withdrawal_rate is not none %}{{ projection.initial_withdrawal_rate|percentage_amount(2) }}%{% else %}—{% endif %}</dd></div>
+    <div><dt>First drawdown year</dt><dd>{% if projection.first_drawdown_age is not none %}{{ projection.first_drawdown_calendar_year }} · age {{ projection.first_drawdown_age }}{% else %}None in the selected period{% endif %}</dd></div>
+    <div><dt>First spending shortfall</dt><dd>{% if projection.first_shortfall_age is not none %}Age {{ projection.first_shortfall_age }}{% else %}None in the selected period{% endif %}</dd></div>
+    <div><dt>Depletion age</dt><dd>{{ projection.depletion_age if projection.depletion_age is not none else "Not depleted in the selected period" }}</dd></div>
+    {% if projection.assumption.terminal_legacy_target_amount is not none %}<div><dt>Legacy target</dt><dd>{% if projection.legacy_target_state %}Target {{ money({"amount": projection.legacy_target_reporting_amount, "currency": projection.reporting_currency}) }} · {{ "Above" if projection.legacy_target_state == "met" else "Below" }} by {{ money({"amount": projection.legacy_target_gap_amount|abs, "currency": projection.reporting_currency}) }}{% else %}Not compared — target FX is missing. <a href="{{ url_for('positions.show_values') }}#routine-fx-heading">Update FX rates →</a>{% endif %}</dd></div>{% endif %}
+  </dl>
+  {% if projection.projects_included_amount or projection.non_project_restricted_amount or projection.opening_negative_cash_amount %}
+  <p class="meta">{% if projection.projects_included_amount %}Projects {{ money({"amount": projection.projects_included_amount, "currency": projection.reporting_currency}) }} are reserved outside this path, receive no simulated return, and are assumed fully used for their separate purpose. {% endif %}{% if projection.non_project_restricted_amount %}Currently restricted {{ money({"amount": projection.non_project_restricted_amount, "currency": projection.reporting_currency}) }} remains in projected non-Project capital but cannot fund spending until access permits it.{% if projection.future_access_amount %} {{ money({"amount": projection.future_access_amount, "currency": projection.reporting_currency}) }} has a future access date recorded.{% endif %} {% endif %}{% if projection.opening_negative_cash_amount %}Negative cash {{ money({"amount": projection.opening_negative_cash_amount, "currency": projection.reporting_currency}) }} is repaid as an opening obligation.{% endif %}</p>
+  {% endif %}
+  {% if projection.future_access_sources %}
+  <details>
+    <summary>Restricted capital with future access</summary>
+    <ul>{% for source in projection.future_access_sources %}<li>{{ source.source_name }}: {{ money({"amount": source.current_amount, "currency": projection.reporting_currency}) }} — spendable from age {{ source.access_age }} ({{ source.access_date|display_date }})</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  {% endif %}
+</section>
+
+{% if projection.calculation_complete and projection.years %}
+<section class="card stack" aria-labelledby="projection-path-heading">
+  <h2 id="projection-path-heading">Annual path</h2>
+  {% if projection_chart %}
+  <div class="chart-box" data-chart="retirement"
+       data-labels="{{ projection_chart.labels|tojson|forceescape }}"
+       data-values="{{ projection_chart.ending_values|tojson|forceescape }}"
+       data-currency="{{ projection_chart.currency }}" data-money-places="{{ projection_chart.currency|currency_places }}">
+    <canvas aria-hidden="true"></canvas>
+  </div>
+  {% endif %}
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th scope="col">Age / year</th><th scope="col">Phase</th><th scope="col" class="num">Starting value</th><th scope="col" class="num">Spending</th><th scope="col" class="num">Nominal return</th><th scope="col" class="num">Surplus / drawdown</th><th scope="col" class="num">Ending value</th><th scope="col" class="num">Shortfall</th></tr></thead>
+    <tbody>{% for year in projection.years %}<tr>
+      <th scope="row">{{ year.age }} <span class="muted">· {{ year.calendar_year }}</span>{% if year.age == projection.depletion_age %} {{ badge("warning", "Depleted") }}{% endif %}</th>
+      <td>{{ year.phase|capitalize }}</td>
+      <td class="num">{{ money({"amount": year.starting_value_amount, "currency": projection.reporting_currency}) }}</td>
+      <td class="num">{{ money({"amount": year.spending_required_amount, "currency": projection.reporting_currency}) }}</td>
+      <td class="num">{{ money({"amount": year.return_amount, "currency": projection.reporting_currency}) }}</td>
+      <td class="num"><span class="money"><span class="ccy">{{ projection.reporting_currency }}</span> {{ year.annual_surplus_drawdown_amount|signed_money_amount(currency=projection.reporting_currency) }}</span></td>
+      <td class="num">{{ money({"amount": year.ending_value_amount, "currency": projection.reporting_currency}) }}</td>
+      <td class="num">{% if year.shortfall_amount %}{{ money({"amount": year.shortfall_amount, "currency": projection.reporting_currency}) }}{% if year.age == projection.first_shortfall_age %} {{ badge("warning", "First") }}{% endif %}{% else %}—{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="hint">Surplus / drawdown compares the year's simulated return with its spending; a drawdown year is not a spending shortfall.</p>
+  <details>
+    <summary>Inspect withdrawal sources</summary>
+    {% for year in projection.years if year.applications %}
+    <h3>Age {{ year.age }} <span class="meta">— funded from {% for bucket in year.buckets_used %}{{ fire_bucket_labels[bucket] if bucket != "cash" else "Cash" }}{{ ", " if not loop.last }}{% endfor %}{% if year.equity_reliance_amount %} · Equity-exposed {{ money({"amount": year.equity_reliance_amount, "currency": projection.reporting_currency}) }}{% endif %}</span></h3>
+    <ul>{% for item in year.applications %}<li>{{ item.source_name }}{% if item.bucket_code %} · {{ fire_bucket_labels[item.bucket_code] }}{% else %} · Cash{% endif %}: {{ money({"amount": item.amount, "currency": projection.reporting_currency}) }}{% if item.equity_exposed %} · Equity-exposed{% endif %}</li>{% endfor %}</ul>
+    {% endfor %}
+  </details>
+  <details>
+    <summary>Inspect allocation drift</summary>
+    <p class="meta">Role shares of the remaining value at each year end. No rebalancing occurs, so shares drift with returns and withdrawals.</p>
+    <div class="table-wrap"><table class="data">
+      <thead><tr><th scope="col">Age</th>{% for role in projection.role_returns %}<th scope="col" class="num">{{ economic_role_labels[role] }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for year in projection.years %}<tr>
+        <th scope="row">{{ year.age }}</th>
+        {% for role in projection.role_returns %}<td class="num">{% if year.ending_role_percentages[role] is not none %}{{ year.ending_role_percentages[role]|percentage_amount(1) }}%{% else %}—{% endif %}</td>{% endfor %}
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </details>
+  <p class="hint">Spending is withdrawn at the beginning of each retirement year. Remaining role amounts then receive the entered nominal returns. No automatic rebalancing occurs.</p>
+</section>
+{% endif %}
+{% endblock %}

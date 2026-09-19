@@ -1,0 +1,6 @@
+Alembic migrations for local SQLite databases.
+
+Keep the complete revision chain and identifiers: existing databases and backup
+compatibility depend on them. Ordinary users create or upgrade databases through
+the chooser, with review and recovery-copy safeguards. Do not run migration commands
+against a user's live database during automated verification. See DEVELOPMENT.md.

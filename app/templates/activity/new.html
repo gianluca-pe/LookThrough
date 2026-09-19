@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, money, radio_cards, wt_field, currency_datalist %}
+{% block title %}Add activity{% endblock %}
+{% block heading %}Add activity{% endblock %}
+{% block content %}
+
+{% include "activity/_switcher.html" %}
+
+{% if not form %}
+{# Type chooser first: real links, large choices.
+   Types without a route are disabled labels, never links. The
+   catalogue is defined once in app/activity.py; chooser_types carries the
+   caller's return context through the choice. #}
+<div class="activity-choices">
+  {% for type in chooser_types %}
+  {% if not type.disabled %}
+  <a class="activity-choice" href="{{ type.url }}">
+    <strong>{{ type.label }}</strong>
+    <span class="hint">{{ type.hint }}</span>
+    {% if type.extra_hint %}<span class="hint muted">{{ type.extra_hint }}</span>{% endif %}
+  </a>
+  {% else %}
+  <span class="activity-choice" aria-disabled="true">
+    <strong>{{ type.label }}</strong>
+    <span class="hint">{{ type.hint }}</span>
+  </span>
+  {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+{% set ns = namespace(first_empty="") %}
+{% set return_qs = {"return_to": return_to} if return_to else {} %}
+{% set first_err = first_error(form, ["effective_date", "account_id", "instrument_id", "quantity_mode", "quantity", "unit_price", "fee_amount", "new_instrument_name", "new_ticker_or_isin", "new_valuation_currency_code", "new_instrument_type"]) %}
+{# On a fresh load, focus the first empty required field so Tab + Enter entry
+   starts where typing starts. #}
+{% if not first_err and not form.is_submitted() %}
+  {% for field in [form.effective_date, form.account_id, form.instrument_id,
+                   form.quantity, form.unit_price] %}
+    {% if not ns.first_empty and (field.data is none or field.data == "") %}
+      {% set ns.first_empty = field.id %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% set ccy = preview.settlement_currency if preview else none %}
+
+{{ error_summary(form) }}
+{% if replacement %}
+{# Continuation context: proceeds are server-resolved; the
+   purchase is an ordinary separate Buy. #}
+<section class="context-panel" aria-labelledby="replacement-heading">
+  <h2 id="replacement-heading">Continue from sale</h2>
+  <p class="context-proceeds">
+    Available sale proceeds:
+    <strong>{{ money({"amount": replacement.available_proceeds, "currency": replacement.settlement_currency}) }}</strong>
+  </p>
+  <p class="meta">
+    In {{ replacement.account_name }} from the sale on {{ replacement.effective_date|display_date }}.
+    This purchase will be recorded as a separate activity — the sale stays unchanged.
+  </p>
+</section>
+{% endif %}
+<form class="stack" method="post" action="{{ url_for('activity.post', **return_qs) }}" novalidate data-live-preview="true">
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.effective_date, required=true,
+              autofocus=(first_err == "effective_date" or ns.first_empty == "effective_date")) }}
+  {{ wt_field(form.account_id, required=true, typeahead=true,
+              autofocus=(first_err == "account_id" or ns.first_empty == "account_id"),
+              hint="Type a few letters to filter.") }}
+  {{ wt_field(form.instrument_id, required=true, typeahead=true,
+              new_instrument=(activity_type == "buy"),
+              autofocus=(first_err == "instrument_id" or ns.first_empty == "instrument_id"),
+              hint=("Type to filter, or choose Add a new instrument." if activity_type == "buy" else "Type a few letters to filter.")) }}
+  {% if activity_type == "sell" %}
+  {# Quantity choice as radio cards. Presentation only: the
+     submitted name/values are the backend-owned contract. The quantity input
+     stays usable without JavaScript in both modes — its requirement is
+     stated in text and enforced server-side, never via HTML required. #}
+  {{ radio_cards(form.quantity_mode,
+                 hints={"entered": "Type the exact units sold.",
+                        "entire_holding": "Sells every unit held on the sale date — no quantity to type, no fractional remnant."},
+                 autofocus=(first_err == "quantity_mode")) }}
+  {{ wt_field(form.quantity, input_class="money-input",
+              label=form.quantity.label.text ~ " (required for “Enter quantity”)",
+              autofocus=(first_err == "quantity" or ns.first_empty == "quantity"),
+              hint="Leave blank when selling the entire holding.") }}
+  {% else %}
+  <input type="hidden" name="quantity_mode" value="entered">
+  {{ wt_field(form.quantity, required=true, input_class="money-input",
+              autofocus=(first_err == "quantity" or ns.first_empty == "quantity")) }}
+  {% endif %}
+  {{ wt_field(form.unit_price, required=true, input_class="money-input",
+              label=("Price per unit, " ~ ccy) if ccy else none,
+              autofocus=(first_err == "unit_price" or ns.first_empty == "unit_price")) }}
+  {{ wt_field(form.fee_amount, input_class="money-input",
+              label=("Fee, " ~ ccy) if ccy else none,
+              autofocus=(first_err == "fee_amount"),
+              hint="Optional; leave blank for no fee.") }}
+
+  {# Server-calculated preview . With JS the region refreshes on
+     field change; without JS the Preview button re-renders the page.
+     Templates never compute these numbers. #}
+  <div id="preview-region" role="status" aria-live="polite">
+{%- if preview %}
+    <p class="preview-sentence">
+      {% if preview.quantity_mode == "entire_holding" %}Entire holding: sells all
+      {%- else %}{{ "Buys" if preview.activity_type == "buy" else "Sells" }}{% endif %}
+      <strong>{{ preview.quantity|trim_decimal|money_amount(none) }} units</strong> of
+      <strong>{{ preview.instrument_name }}</strong> in
+      <strong>{{ preview.account_name }}</strong> for
+      {{ money({"amount": preview.gross_amount, "currency": preview.settlement_currency}) }}{% if preview.fee_amount %} plus {{ money({"amount": preview.fee_amount, "currency": preview.settlement_currency}) }} fee{% endif %}.
+      Cash effect: {{ money({"amount": preview.cash_effect, "currency": preview.settlement_currency}) }}{% if preview.cash_account_id != preview.account_id %} — settles in <strong>{{ preview.cash_account_name }}</strong>{% endif %}.
+      Quantity after: <strong>{{ preview.quantity_after|trim_decimal|money_amount(none) }} units</strong>.
+      {%- if preview.creates_registration %}
+      <span class="meta preview-note">This opens a new transaction-tracked position in {{ preview.account_name }}.</span>
+      {%- endif %}
+    </p>
+    {% for warning in preview.warnings %}<p class="banner-warning">{{ warning }}</p>{% endfor %}
+{%- endif %}
+  </div>
+
+  <div class="form-actions">
+    {{ form.post_trade(class_="btn btn-primary", value=("Record buy" if activity_type == "buy" else "Record sell")) }}
+    {{ form.preview_trade(class_="btn", formaction=url_for('activity.preview', **return_qs)) }}
+    <a class="btn btn-plain" href="{{ cancel_url }}">Cancel</a>
+  </div>
+
+  {% if activity_type == "buy" %}
+  {# Compact inline identity creation. Stays after the Record
+     button in DOM order so Enter always submits the primary trade action;
+     a collapsed disclosure is skipped in the tab path. #}
+  <details class="disclosure"{% if instrument_form_open or form.new_instrument_name.errors or form.new_ticker_or_isin.errors or form.new_valuation_currency_code.errors or form.new_instrument_type.errors %} open{% endif %}>
+    <summary>Add a new instrument</summary>
+    <div class="disclosure-body stack">
+      <p class="hint">Save only its identity now — you can classify it later.</p>
+      {{ wt_field(form.new_instrument_name, required=true,
+                  autofocus=(first_err == "new_instrument_name")) }}
+      {{ wt_field(form.new_ticker_or_isin,
+                  autofocus=(first_err == "new_ticker_or_isin"),
+                  hint="Optional.") }}
+      {{ wt_field(form.new_valuation_currency_code, required=true, currency_suggest=true,
+                  autofocus=(first_err == "new_valuation_currency_code"),
+                  hint="Three-letter code, e.g. EUR.") }}
+      {{ wt_field(form.new_instrument_type, required=true,
+                  autofocus=(first_err == "new_instrument_type")) }}
+      {{ form.create_instrument(class_="btn", formaction=url_for('activity.create_instrument', **return_qs)) }}
+    </div>
+  </details>
+  {% endif %}
+</form>
+{{ currency_datalist() }}
+{% endif %}
+{% endblock %}

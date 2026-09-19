@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state, error_summary, first_error, radio_cards, wt_field, currency_datalist %}
+{% block title %}Set up positions{% endblock %}
+{% block heading %}Add current positions{% endblock %}
+{% block content %}
+{% set first_err = first_error(form, ["account_id", "instrument_id", "new_instrument_name", "ticker_or_isin", "valuation_currency_code", "tracking_mode", "effective_date", "opening_quantity", "statement_value"]) %}
+{% set new_instrument = form.new_instrument_selected or form.new_instrument_name.errors or form.ticker_or_isin.errors or form.valuation_currency_code.errors %}
+
+<div class="setup-layout">
+  {% include "setup/_steps.html" %}
+
+  <div class="setup-content">
+
+    <section class="card" aria-labelledby="positions-list-heading">
+      <h2 id="positions-list-heading">Current positions</h2>
+      {% if positions %}
+      <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th scope="col">Instrument</th><th scope="col">Account</th>
+            <th scope="col">Tracking</th><th scope="col">Currency</th><th scope="col">Opened</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in positions %}
+          <tr>
+            <td><strong>{{ row.instrument_name }}</strong></td>
+            <td>{{ row.account_name }}</td>
+            <td class="small">{{ "Quantity & transactions" if row.tracking_mode == "transaction_tracked" else "Statement value" }}</td>
+            <td>{{ row.currency_code }}</td>
+            <td class="meta">{{ row.opening_date|display_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      {% call empty_state(standalone=false) %}<p>Nothing here yet. Add what you hold today — you do not need
+         old trades; an opening quantity or a statement value is enough.</p>{% endcall %}
+      {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="add-position-heading">
+      <h2 id="add-position-heading">Add a position</h2>
+
+      {{ error_summary(form) }}
+
+      <form class="stack" method="post" action="{{ url_for('positions.add_position') }}" novalidate>
+        {{ form.hidden_tag() }}
+        {{ wt_field(form.account_id, required=true, typeahead=true,
+                    autofocus=(first_err == "account_id")) }}
+        {{ wt_field(form.instrument_id, required=true, typeahead=true, new_instrument=true,
+                    autofocus=(first_err == "instrument_id"),
+                    hint="Type a few letters to filter. Adding something new? Choose “Add a new instrument” and fill in its details below.") }}
+
+        <details class="disclosure"{% if new_instrument %} open{% endif %}>
+          <summary>New instrument details</summary>
+          <div style="margin-top: var(--space-3)">
+            {{ wt_field(form.new_instrument_name,
+                        autofocus=(first_err == "new_instrument_name")) }}
+            {{ wt_field(form.ticker_or_isin,
+                        hint="Optional." ) }}
+            {{ wt_field(form.instrument_type) }}
+            {{ wt_field(form.valuation_currency_code, currency_suggest=true,
+                        autofocus=(first_err == "valuation_currency_code"),
+                        hint="The currency prices and statements for this instrument come in.") }}
+          </div>
+        </details>
+
+        {{ radio_cards(form.tracking_mode,
+                       hints={"transaction_tracked": "You know the units; trades keep them up to date.",
+                              "statement_valued": "One lump-sum value per statement; no units are invented."},
+                       hint="This choice is permanent for the position — it prevents the same money being counted twice.",
+                       default_first=true) }}
+
+        {{ wt_field(form.effective_date, required=true,
+                    autofocus=(first_err == "effective_date"),
+                    hint="The date this opening quantity or statement value is true.") }}
+
+        <div class="block-quantity">
+          {{ wt_field(form.opening_quantity, input_class="money-input",
+                      autofocus=(first_err == "opening_quantity"),
+                      hint="Units you hold today. Required for quantity tracking.") }}
+        </div>
+        <div class="block-statement">
+          {{ wt_field(form.statement_value, input_class="money-input",
+                      autofocus=(first_err == "statement_value"),
+                      hint="The lump-sum value from your latest statement, in the instrument's currency. Required for statement tracking.") }}
+        </div>
+
+        <div class="form-actions">
+          {{ form.save_position(class_="btn btn-primary") }}
+        </div>
+      </form>
+    </section>
+
+    {% if positions %}
+    <p class="muted small">Next: give each position a current price or statement value on the
+       <a href="{{ url_for('positions.show_setup_values') }}">Values step</a>.</p>
+    {% endif %}
+
+  </div>
+</div>
+{{ currency_datalist() }}
+{% endblock %}

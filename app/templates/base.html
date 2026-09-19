@@ -1,0 +1,88 @@
+{# Shared shell. Navigation entries without an endpoint are non-focusable
+   disabled labels; only implemented screens receive links. #}
+{%- macro render_nav() %}
+  {% for item in nav_items %}
+    {% if item.endpoint %}
+  <a href="{{ url_for(item.endpoint) }}"{% if request.endpoint in item.get("active_endpoints", [item.endpoint]) %} aria-current="page"{% endif %}>{{ item.label }}</a>
+    {% else %}
+  <span class="nav-disabled" aria-disabled="true">{{ item.label }}</span>
+    {% endif %}
+  {% endfor %}
+{% endmacro %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{% endblock %} — LookThrough</title>
+<link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
+<link rel="alternate icon" href="{{ static_url('favicon.png') }}">
+<link rel="stylesheet" href="{{ static_url('css/app.css') }}">
+<script src="{{ static_url('js/enhance.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="topbar">
+  <div class="header-identity">
+    <span class="brand">LookThrough
+      {%- if portfolio_name and not dataset_filename %}<span class="portfolio-name">· {{ portfolio_name }}</span>{% endif %}
+    </span>
+    {% if dataset_filename %}
+    <span class="header-separator" aria-hidden="true">·</span>
+    <details class="dataset-menu" name="header-disclosures">
+      <summary aria-label="{{ portfolio_name or dataset_filename }} — database details and switching"><span class="dataset-label">{{ portfolio_name or dataset_filename }}</span><span class="dataset-arrow" aria-hidden="true">▾</span></summary>
+      <div class="dataset-panel">
+        {% if portfolio_name %}<p class="dataset-portfolio">{{ portfolio_name }}</p>{% endif %}
+        <p class="meta">Current file</p>
+        <p class="database-filename">{{ dataset_filename }}</p>
+        <a href="{{ database_chooser_url }}">Change database</a>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  {# Narrow screens (≤900px): no-JS <details> menu.
+     Hidden on desktop where the sidebar is the primary navigation. #}
+  <details class="nav-menu" name="header-disclosures">
+    <summary>Menu</summary>
+    <nav class="nav-menu-panel" aria-label="Mobile navigation">
+      {{ render_nav() }}
+    </nav>
+  </details>
+  <span class="spacer"></span>
+  {# The primary activity action stays visible throughout the app. #}
+  {% if add_activity_endpoint %}
+  <a class="btn btn-primary" href="{{ url_for(add_activity_endpoint) }}">+ Add activity</a>
+  {% else %}
+  <span class="btn btn-primary" aria-disabled="true" title="Available once activity recording exists">+ Add activity</span>
+  {% endif %}
+</header>
+
+<div class="shell">
+  <aside class="sidebar">
+    <nav aria-label="Primary navigation">
+      {{ render_nav() }}
+    </nav>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="page-head">
+      <h1>{% block heading %}{% endblock %}</h1>
+      {% block as_of %}{% if as_of_label %}<span class="as-of">{{ as_of_label }}</span>{% endif %}{% endblock %}
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+    <div class="flashes" role="status">
+        {% for category, message in messages %}
+      <p class="flash flash-{{ category }}">{{ message }}</p>
+        {% endfor %}
+    </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

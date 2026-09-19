@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% from "_macros.html" import as_of_form, empty_state, money, money_missing, badge, sort_th with context %}
+{% block title %}Accounts{% endblock %}
+{% block heading %}Accounts{% endblock %}
+{% block as_of %}<span class="as-of">Cash as of {{ as_of_date|display_date }}</span>{% endblock %}
+{% block content %}
+{{ as_of_form("accounts.index", as_of_date, label="Show cash as of", extra_params={"sort": sort_by, "direction": sort_direction}) }}
+
+{% if accounts %}
+<div class="table-wrap">
+<table class="data">
+  <thead>
+    <tr>
+      {{ sort_th("accounts.index", "institution", "Institution") }}
+      {{ sort_th("accounts.index", "account", "Account") }}
+      {{ sort_th("accounts.index", "cash", "Cash tracking") }}
+      <th scope="col" class="num">Cash</th>
+      <th scope="col" class="num">Included value</th>
+      <th scope="col"><span class="sr-only">Action</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for account in accounts %}
+    <tr>
+      <td>{{ account.institution_name }}</td>
+      <th scope="row">
+        <a href="{{ url_for('accounts.detail', account_id=account.id) }}">{{ account.name }}</a>
+        <br><span class="meta">{{ account.account_type|capitalize }}{% if account.is_multicurrency %} · Multicurrency{% endif %}{% if account.reference %} · {{ account.reference }}{% endif %}</span>
+        {% if account.portfolio_share_percent != 100 or account.present_access_percent != 100 %}
+        <br><span class="meta">Share {{ account.portfolio_share_percent|trim_decimal }}%
+          · access now {{ account.present_access_percent|trim_decimal }}%</span>
+        {% endif %}
+      </th>
+      <td class="small">
+        {{ "Tracked separately" if account.cash_tracking_mode == "separate_cash" else "Included in aggregate" }}
+      </td>
+      <td class="num">
+        {% if account.cash_settlement_account_name %}
+        <span class="meta">— activity cash settles in
+          <a href="{{ url_for('accounts.detail', account_id=account.cash_settlement_account_id) }}">{{ account.cash_settlement_account_name }}</a></span>
+        {% else %}
+        {% for cash in account.cash %}
+          {% if cash.amount is not none %}
+        {{ money({"amount": cash.amount, "currency": cash.currency_code}) }}
+        <span class="meta">
+          {%- if cash.status == "confirmed" %}· confirmed {{ cash.checkpoint.effective_date|display_date }}
+          {%- else %}· calculated{% endif -%}
+        </span>
+          {% if cash.amount < 0 %}{{ badge("warning", "Negative cash") }}{% endif %}
+          {% else %}
+        <span class="meta">— included in aggregate</span>
+          {% endif %}
+          {% if not loop.last %}<br>{% endif %}
+        {% endfor %}
+        {% endif %}
+      </td>
+      <td class="num">
+        {% set vs = account.value_summary %}
+        {% if vs.included_reporting_amount is not none %}
+        {{ money({"amount": vs.included_reporting_amount, "currency": reporting_currency}) }}
+          {% if vs.gross_reporting_amount != vs.included_reporting_amount
+                or vs.accessible_reporting_amount != vs.included_reporting_amount %}
+        <br><span class="meta">gross
+          {{ money({"amount": vs.gross_reporting_amount, "currency": reporting_currency}) }}
+          · accessible now
+          {{ money({"amount": vs.accessible_reporting_amount, "currency": reporting_currency}) }}
+          {%- if vs.term_liquidity_reporting_amount %} · term liquidity
+          {{ money({"amount": vs.term_liquidity_reporting_amount, "currency": reporting_currency}) }}{% endif %}</span>
+          {% endif %}
+        {% elif vs.status == "empty" %}
+        <span class="meta">— nothing tracked</span>
+        {% else %}
+        {{ money_missing("no reporting value yet") }}
+        {% endif %}
+      </td>
+      <td class="small">
+        <a href="{{ url_for('accounts.edit', account_id=account.id) }}">Edit</a>
+        {% if account.cash_tracking_mode == "separate_cash" and not account.cash_settlement_account_name %}
+        · <a href="{{ url_for('accounts.new_cash_confirmation', account_id=account.id) }}">Set cash balance</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+{% call empty_state(action_url=url_for('accounts.new'), action_label="Add account") %}<p>No active accounts yet.</p>{% endcall %}
+{% endif %}
+
+<section class="card" aria-labelledby="relationship-minimums-heading">
+  <h2 id="relationship-minimums-heading">Relationship minimums</h2>
+  <div class="table-wrap">
+  <table class="data">
+    <thead>
+      <tr>
+        <th scope="col">Institution</th>
+        <th scope="col" class="num">Eligible value</th>
+        <th scope="col" class="num">Minimum</th>
+        <th scope="col" class="num">Buffer</th>
+        <th scope="col">Status</th>
+        <th scope="col"><span class="sr-only">Action</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in relationship_rows %}
+      <tr>
+        <th scope="row">{{ row.institution.name }}</th>
+        {% if row.snapshot %}
+          {% if row.snapshot.eligible_value_amount is not none %}
+        <td class="num">{{ money({"amount": row.snapshot.eligible_value_amount, "currency": row.snapshot.threshold_currency_code}) }}</td>
+        <td class="num">{{ money({"amount": row.snapshot.threshold_amount, "currency": row.snapshot.threshold_currency_code}) }}</td>
+        <td class="num">{% if row.snapshot.buffer_amount is not none %}{{ money({"amount": row.snapshot.buffer_amount, "currency": row.snapshot.threshold_currency_code}) }}{% else %}{{ money_missing() }}{% endif %}</td>
+          {% else %}
+        <td class="num">{{ money_missing() }}<br>
+          <span class="meta">known {{ money({"amount": row.snapshot.known_eligible_value_amount, "currency": row.snapshot.threshold_currency_code}) }}</span></td>
+        <td class="num">{{ money({"amount": row.snapshot.threshold_amount, "currency": row.snapshot.threshold_currency_code}) }}</td>
+        <td class="num">{{ money_missing() }}</td>
+          {% endif %}
+        <td>
+          {% if row.snapshot.status == "cannot_determine" %}{{ badge("missing", "Cannot determine") }}
+          {% elif row.snapshot.status == "stale" %}{{ badge("stale", "Stale") }}
+          {% elif row.snapshot.state == "below_minimum" %}{{ badge("warning", "Below minimum") }}
+          {% elif row.snapshot.state == "within_warning_buffer" %}{{ badge("warning", "Inside preferred buffer") }}
+          {% endif %}
+        </td>
+        <td><a href="{{ url_for('relationships.edit', institution_id=row.institution.id, as_of=as_of_date.isoformat()) }}"
+               aria-label="Review relationship minimum for {{ row.institution.name }}">Review minimum →</a></td>
+        {% else %}
+        <td colspan="4" class="meta">No minimum recorded</td>
+        <td><a href="{{ url_for('relationships.edit', institution_id=row.institution.id, as_of=as_of_date.isoformat()) }}"
+               aria-label="Add relationship minimum for {{ row.institution.name }}">Add minimum →</a></td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="meta">Commercial minimums use full tracked account values at each institution;
+     portfolio share and present access do not reduce them. Current minimum problems
+     also appear in Overview attention.</p>
+</section>
+
+<p class="form-actions">
+  <a class="btn" href="{{ url_for('accounts.new') }}">Add account</a>
+  <a class="btn btn-plain" href="{{ url_for('activity.history') }}">Activity history</a>
+</p>
+{% endblock %}

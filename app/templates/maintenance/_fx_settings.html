@@ -1,0 +1,26 @@
+<section class="card stack" id="fx-settings" aria-labelledby="fx-heading">
+  <div class="fx-heading-row"><div><p class="eyebrow">Currency conversion</p><h2 id="fx-heading">FX reference rates</h2></div>
+    {% if fx_current %}<span class="badge {% if fx_missing or fx_stale %}badge-warning{% else %}badge-success{% endif %}">{% if fx_missing %}Missing rates{% elif fx_stale %}Stale{% else %}Saved locally{% endif %}</span>{% endif %}</div>
+  <p>Keep all portfolio conversions on one dated set of rates. Update when you choose; your saved rates work offline.</p>
+  {% if fx_current %}
+  <dl class="details-list">
+    <div><dt>Reference date</dt><dd><strong>{{ fx_current.effective_date|display_date }}</strong>{% if fx_stale %} · older than your FX freshness preference{% endif %}</dd></div>
+    <div><dt>Source</dt><dd>{{ 'Banca d’Italia' if fx_current.source == 'banca_italia' else 'Manual entry / correction' }}</dd></div>
+    <div><dt>Coverage</dt><dd>{{ fx_uses|length - fx_missing|length }} of {{ fx_uses|length }} currencies used by your accounts, holdings and settings</dd></div>
+  </dl>
+  {% if fx_missing %}<p class="flash flash-warning">Missing from this set: {{ fx_missing|join(', ') }}. Affected conversions remain incomplete. Download a complete set or enter the required rates manually.</p>{% endif %}
+  {% else %}<p class="meta">No reference set saved yet. Your individually entered rates are still in use. Review a download or enter a complete set to begin.</p>{% endif %}
+  <div class="form-actions">
+    <form method="post" action="{{ url_for('fx_settings.download') }}">{{ fx_download_form.hidden_tag() }}<button class="btn btn-primary" type="submit">Update FX rates</button></form>
+    <a class="btn" href="{{ url_for('fx_settings.manual') }}">Enter or correct rates manually</a>
+  </div>
+  <p class="hint">Downloads Banca d’Italia’s public table, then shows a review. No sign-in or key. Saves only to this database; no portfolio data is sent.</p>
+  <details><summary>Rates used by this portfolio</summary>
+    <p class="meta">One rate per currency against EUR. Inverse and cross rates are calculated from these observations, without separately rounded copies.</p>
+    <div class="table-wrap"><table class="data"><thead><tr><th scope="col">Currency</th><th scope="col">Why it is needed</th><th scope="col">Units per 1 EUR</th></tr></thead><tbody>
+    {% for code, purposes in fx_uses.items() %}<tr><th scope="row">{{ code }}</th><td>{{ purposes|join('; ') }}</td><td>{% if code == 'EUR' %}1{% elif fx_rates.get(code) %}{{ fx_rates[code] }}{% else %}Not in a saved reference set{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% if fx_current %}<p class="meta">Saved {{ fx_current.created_at.strftime('%d %b %Y, %H:%M UTC') }} · {{ fx_current.source_note }}</p>{% endif %}
+  </details>
+  <details><summary>How updates and corrections work</summary><p>Each view uses the latest saved set on or before its date. Rates share one reference date; they are indicative consolidation rates, not bank dealing prices. Dates before your first reference set keep using your earlier individual rates.</p><p>We fetch only the latest published table. Identical updates do nothing. A changed rate for an already saved date requires explicit replacement; the previous edition stays in your backup. Older dates are not polled. If a download fails or its format changes, the message explains why and manual entry remains available.</p></details>
+</section>

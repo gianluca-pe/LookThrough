@@ -1,0 +1,107 @@
+{% from "_macros.html" import badge, money %}
+{% macro funding_visual(funding, chart) -%}
+<p>{{ 'Core spending' if funding.retirement_plan else 'Annual spending (no Core/Flexible split)' }}:
+  <strong>{{ money({'amount': funding.spending.reporting_amount, 'currency': funding.reporting_currency}) }}/year</strong>.
+  All amounts in {{ funding.as_of_date|display_date }} purchasing power.</p>
+{% if not funding.calculation_complete %}<p>{{ badge('missing', 'Partial') }} Known eligible reserves only; missing sources may change the gaps below.</p>
+{% elif funding.status == 'stale' %}<p>{{ badge('stale', 'Stale') }} At least one source needs updating.</p>{% endif %}
+<div class="chart-box funding-chart" data-chart="bucket-reserves" hidden
+     data-labels="{{ chart.labels|tojson|forceescape }}" data-actual="{{ chart.actual|tojson|forceescape }}"
+     data-required="{{ chart.required|tojson|forceescape }}" data-currency="{{ funding.reporting_currency }}" data-money-places="{{ funding.reporting_currency|currency_places }}"
+     data-unit="{{ chart.unit }}"{% if chart.maximum %} data-maximum="{{ chart.maximum }}"{% endif %}
+     data-actual-amounts="{{ chart.actual_amounts|tojson|forceescape }}" data-required-amounts="{{ chart.required_amounts|tojson|forceescape }}">
+  <canvas role="img" aria-label="Current eligible Now and Bridge reserves compared with spending requirements. Exact amounts follow in the table." aria-describedby="funding-targets"></canvas>
+</div>
+<div class="table-wrap">
+<table class="data" id="funding-targets" aria-label="Current bucket reserves versus spending targets">
+  <thead><tr><th scope="col">Bucket</th><th scope="col" class="num">Required</th><th scope="col" class="num">Current</th><th scope="col" class="num">Over / under</th></tr></thead>
+  <tbody>{% for row in funding.assessment.bucket_targets %}<tr>
+    <th scope="row">{{ row.code|capitalize }}</th>
+    <td class="num">{% if row.required_percent is not none %}<strong class="funding-percent">{{ row.required_percent|money_amount(1) }}%</strong>{% endif %}{{ money({'amount':row.required_amount,'currency':funding.reporting_currency}) }}</td>
+    <td class="num">{% if row.current_percent is not none %}<strong class="funding-percent">{{ row.current_percent|money_amount(1) }}%</strong>{% endif %}{{ money({'amount':row.current_amount,'currency':funding.reporting_currency}) }}</td>
+    <td class="num">{% if row.gap_amount %}<span class="funding-under">Under {{ money({'amount':row.gap_amount,'currency':funding.reporting_currency}) }}</span>{% elif row.surplus_amount %}Over {{ money({'amount':row.surplus_amount,'currency':funding.reporting_currency}) }}{% else %}On target{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table>
+</div>
+{% if chart.unit == 'percent' %}<p class="meta">Percentages of {{ money({'amount':funding.assessment.allocation_capital_amount,'currency':funding.reporting_currency}) }} starting capital in this reserve model, including Growth.</p>
+{% else %}<p class="meta">Percentages are unavailable until the model has complete, positive starting capital. Dollar comparisons remain visible.</p>{% endif %}
+<p class="meta">Targets: three years for Now, seven for Bridge. Current includes eligible bucket holdings and cash assigned once, before transfers between buckets. {{ 'Flexible spending is excluded.' if funding.retirement_plan }}</p>
+{% if funding.cash_deficit_amount %}<p class="meta">Now also covers the existing {{ money({'amount':funding.cash_deficit_amount,'currency':funding.reporting_currency}) }} cash deficit.</p>{% endif %}
+{% if not funding.calculation_complete %}<p><strong>First-ten-year coverage is incomplete.</strong></p>
+{% elif funding.assessment.covered_without_growth %}<p><strong>Cash, Now and Bridge cover both periods without Growth withdrawals.</strong></p>
+{% else %}<p><strong>Cash, Now and Bridge do not cover both periods on their own.</strong>
+  {% if funding.assessment.growth_applied_amount %}These reserves need {{ money({'amount':funding.assessment.growth_applied_amount,'currency':funding.reporting_currency}) }} from Growth.{% endif %}
+  {% if funding.assessment.shortfall_amount %}A further {{ money({'amount':funding.assessment.shortfall_amount,'currency':funding.reporting_currency}) }} remains uncovered.{% endif %}</p>{% endif %}
+<p class="meta">Annual spending stays constant. Assets are assumed to keep pace with inflation (zero real return). <a href="{{ url_for('retirement.index') }}">Retirement planner →</a> includes future income and investment projections.</p>
+{%- endmacro %}
+
+{# Reserve assessment and the cash-first waterfall evidence. #}
+{% macro funding_table(funding) -%}
+<p class="meta" id="funding-reserve-explanation">Eligible reserves are the period's remaining bucket value plus cash assigned to it and unused earlier reserves. Later buckets are excluded from this comparison. Bridge is assessed after funding Now; the two rows must not be added together.</p>
+<div class="table-wrap">
+  <table class="data" id="funding-reserves" aria-label="Period reserve assessment" aria-describedby="funding-reserve-explanation">
+    <thead>
+      <tr><th scope="col">Period</th><th scope="col" class="num">Required reserve</th><th scope="col" class="num">Eligible reserves</th><th scope="col" class="num">Surplus / gap</th></tr>
+    </thead>
+    <tbody>
+      {% for period in funding.periods %}
+      <tr>
+        <th scope="row">{{ period.code|capitalize }} — years {{ period.start_year }}–{{ period.end_year }}<br>
+          <span class="meta">to {{ (funding.now_end_date if period.code == "now" else funding.bridge_end_date)|display_date }}</span></th>
+        <td class="num"><span class="funding-mobile-label" aria-hidden="true">Required reserve</span>{{ money({"amount": period.required_amount, "currency": funding.reporting_currency}) }}</td>
+        <td class="num"><span class="funding-mobile-label" aria-hidden="true">Eligible reserves</span>{{ money({"amount": period.eligible_reserve_amount, "currency": funding.reporting_currency}) }}
+          <div class="meta">{{ period.code|capitalize }} {{ money({"amount": period.own_bucket_reserve_amount, "currency": funding.reporting_currency}) }}<br>
+            Assigned cash {{ money({"amount": period.cash_assigned_amount, "currency": funding.reporting_currency}) }}
+            {% if period.code == "bridge" %}<br>Unused Now {{ money({"amount": period.earlier_reserve_amount, "currency": funding.reporting_currency}) }}{% endif %}</div></td>
+        <td class="num"><span class="funding-mobile-label" aria-hidden="true">Surplus / gap</span>{% if period.reserve_gap_amount %}{{ badge("warning", "Gap") }} {{ money({"amount": period.reserve_gap_amount, "currency": funding.reporting_currency}) }}
+          {% elif period.reserve_surplus_amount %}Surplus {{ money({"amount": period.reserve_surplus_amount, "currency": funding.reporting_currency}) }}
+          {% else %}Matches requirement{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{%- endmacro %}
+
+{% macro funding_disclosure(funding) -%}
+<details class="meta">
+  <summary>How each period is funded</summary>
+  {% for period in funding.periods %}
+  <h3 class="meta">{{ period.code|capitalize }} — years {{ period.start_year }}–{{ period.end_year }}</h3>
+  <p>Bucket plus assigned cash: {{ money({"amount": period.assigned_reserve_amount, "currency": funding.reporting_currency}) }}.
+    Balance against the requirement before unused earlier reserves: {{ money({"amount": period.assigned_reserve_balance_amount, "currency": funding.reporting_currency}) }} (positive is surplus; negative is gap).</p>
+  <p>Applied from all sources: {{ money({"amount": period.funded_amount, "currency": funding.reporting_currency}) }};
+    uncovered gap {{ money({"amount": period.shortfall_amount, "currency": funding.reporting_currency}) }}.
+    From later buckets: {{ money({"amount": period.later_period_dependency_amount, "currency": funding.reporting_currency}) }};
+    Equity-exposed: {{ money({"amount": period.equity_dependency_amount, "currency": funding.reporting_currency}) }}.</p>
+  <p>Spending by year in {{ funding.as_of_date|display_date }} purchasing power:
+    {%- for amount in period.annual_amounts %}
+    year {{ period.start_year + loop.index0 }} {{ money({"amount": amount, "currency": funding.reporting_currency}) }}{{ " · " if not loop.last }}
+    {%- endfor %}</p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th scope="col">Source</th><th scope="col" class="num">Applied</th><th scope="col">Note</th></tr>
+      </thead>
+      <tbody>
+        {% for application in period.applications %}
+        <tr>
+          <th scope="row">{% if application.source_kind == "cash" %}Accessible cash{% else %}{{ fire_bucket_labels[application.bucket_code] }} bucket{% endif %}</th>
+          <td class="num">{{ money({"amount": application.amount, "currency": funding.reporting_currency}) }}</td>
+          <td class="meta">{%- set notes = [] -%}
+            {%- if application.later_period %}{% set _ = notes.append("Later bucket") %}{% endif %}
+            {%- if application.source_kind != "cash" %}
+              {%- if application.equity_exposed is sameas true %}{% set _ = notes.append("Equity-exposed") %}
+              {%- elif application.equity_exposed is none %}{% set _ = notes.append("Role not set") %}{% endif %}
+            {%- endif %}
+            {{- notes|join(". ") -}}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">No known eligible source was applied.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</details>
+{%- endmacro %}

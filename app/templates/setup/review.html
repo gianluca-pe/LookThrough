@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money, money_missing, badge, portfolio_subtotals %}
+{% from "overview/_attention_items.html" import attention_list_item with context %}
+{% block title %}Review setup{% endblock %}
+{% block heading %}Review current values{% endblock %}
+{% block as_of %}
+<span class="as-of">Values as of {{ summary.as_of_date|display_date }} · reporting in {{ summary.reporting_currency }}</span>
+{% endblock %}
+{% block content %}
+<div class="setup-layout">
+  {% include "setup/_steps.html" %}
+
+  <div class="setup-content">
+    <p class="muted" style="max-width: 40rem">Last step: check these figures against your
+       statements. You can finish with incomplete values — what is missing stays visible
+       everywhere and is never counted as zero. Classification comes later and is not
+       needed to finish setup.</p>
+
+    <section class="card" aria-labelledby="review-total-heading">
+      <h2 class="card-label" id="review-total-heading">
+        {{- "Known included portfolio value" if summary.included_status == "partial" else "Included portfolio value" -}}
+      </h2>
+      {% if summary.included_reporting_amount is not none %}
+      <div class="headline">{{ money({"amount": summary.included_reporting_amount, "currency": summary.reporting_currency}) }}</div>
+      {% else %}
+      <div class="headline">{{ money_missing() }}</div>
+      {% endif %}
+      {{ portfolio_subtotals(summary) }}
+      <p class="meta">
+        {% if summary.included_status == "partial" %}
+          {{ badge("missing", "Partial") }}
+          Known subtotal for {{ summary.total_reporting_valued_count }} of {{ summary.total_item_count }} positions and cash balances.
+        {% elif summary.included_status == "missing" %}
+          {{ badge("missing", "Missing") }} Nothing has a reporting value as of this date.
+        {% elif summary.included_status == "stale" %}
+          {{ badge("stale", "Stale") }}
+          All {{ summary.position_count }} positions{% if summary.cash_balance_count %} and {{ summary.cash_balance_count }} cash balances{% endif %} valued; at least one source is old.
+        {% elif summary.included_status == "empty" %}
+          No positions or cash balances as of this date.
+        {% else %}
+          All {{ summary.position_count }} positions{% if summary.cash_balance_count %} and {{ summary.cash_balance_count }} cash balances{% endif %} valued and current.
+        {% endif %}
+      </p>
+    </section>
+
+    {% if summary.attention_items %}
+    <section class="card" aria-labelledby="review-attention-heading">
+      <h2 id="review-attention-heading">Worth fixing before you reconcile</h2>
+      <ul class="attention-list">
+        {% for item in summary.attention_items %}{{ attention_list_item(item, guided_setup=true) }}{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <section class="card" aria-labelledby="review-native-heading">
+      <h2 id="review-native-heading">Reconcile by currency</h2>
+      {% if summary.portfolio_native_totals %}
+      <p class="meta">Compare each figure — investments and sourced cash — with the total on that currency's statements.</p>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th scope="col">Currency</th><th scope="col" class="num">Native value</th></tr>
+          </thead>
+          <tbody>
+            {% for total in summary.portfolio_native_totals %}
+            <tr>
+              <td>{{ total.currency }}</td>
+              <td class="num">{{ money({"amount": total.amount, "currency": total.currency}) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p>{{ money_missing("No eligible price, statement value, or cash source as of this date.") }}</p>
+      {% endif %}
+      <p class="meta">Need to check one position? Open
+        <a href="{{ url_for('positions.holdings') }}">traceable Holdings</a>.</p>
+    </section>
+
+    <div class="form-actions">
+      <a class="btn btn-primary" href="{{ url_for('overview.show') }}">Finish setup — go to Overview</a>
+      <a class="btn" href="{{ url_for('positions.show_positions') }}">Back to Positions</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

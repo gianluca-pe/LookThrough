@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, first_error, money, radio_cards, wt_field, currency_datalist %}
+{% block title %}Record dividend{% endblock %}
+{% block heading %}Record dividend{% endblock %}
+{% block content %}
+
+{% set activity_type = "dividend" %}
+{% include "activity/_switcher.html" %}
+
+<section class="card" aria-labelledby="accumulating-guidance">
+  <h2 id="accumulating-guidance">Accumulating share class?</h2>
+  <p>Do not record a dividend when income stays inside the fund and is already reflected in its NAV. No cash or additional units occurred.</p>
+</section>
+
+{% set ns = namespace(first_empty="") %}
+{% set return_qs = {"return_to": return_to} if return_to else {} %}
+{% set first_err = first_error(form, ["effective_date", "account_id", "instrument_id", "currency_code", "net_amount", "outcome", "gross_amount", "withholding_amount", "reinvestment_instrument_id", "reinvestment_quantity", "reinvestment_unit_price", "reinvestment_purchase_amount", "reinvestment_fee_amount"]) %}
+{% if not first_err and not form.is_submitted() %}
+  {% for field in [form.effective_date, form.account_id, form.instrument_id,
+                   form.currency_code, form.net_amount] %}
+    {% if not ns.first_empty and (field.data is none or field.data == "") %}
+      {% set ns.first_empty = field.id %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
+{{ error_summary(form) }}
+<form class="stack" method="post" action="{{ url_for('dividends.post', **return_qs) }}" novalidate data-live-preview="true">
+  {{ form.hidden_tag() }}
+  {{ wt_field(form.effective_date, required=true,
+              autofocus=(first_err == "effective_date" or ns.first_empty == "effective_date")) }}
+  {{ wt_field(form.account_id, required=true, typeahead=true,
+              autofocus=(first_err == "account_id" or ns.first_empty == "account_id"),
+              hint="Account that received the distribution.") }}
+  {{ wt_field(form.instrument_id, required=true, typeahead=true,
+              autofocus=(first_err == "instrument_id" or ns.first_empty == "instrument_id"),
+              hint="Instrument that paid the distribution.") }}
+  {{ wt_field(form.currency_code, required=true, currency_suggest=true,
+              autofocus=(first_err == "currency_code" or ns.first_empty == "currency_code"),
+              hint="Three-letter code, e.g. EUR.") }}
+  {{ wt_field(form.net_amount, required=true, input_class="money-input",
+              autofocus=(first_err == "net_amount" or ns.first_empty == "net_amount"),
+              hint="Amount actually received after any withholding.") }}
+  {# Outcomes as radio cards. Presentation only: the
+     submitted name/values are the backend-owned SelectField contract. #}
+  {{ radio_cards(form.outcome, columns=3,
+                 hints={"cash": "The amount received stays as cash in the account.",
+                        "reinvest_same": "The payout bought more units of the same instrument.",
+                        "reinvest_other": "The payout bought units of a different instrument."},
+                 autofocus=(first_err == "outcome")) }}
+
+  <details class="disclosure"{% if form.gross_amount.errors or form.withholding_amount.errors %} open{% endif %}>
+    <summary>Optional distribution details</summary>
+    <div class="disclosure-body stack">
+      <p class="hint">Enter only amounts shown on the statement. LookThrough does not calculate tax.</p>
+      {{ wt_field(form.gross_amount, input_class="money-input",
+                  autofocus=(first_err == "gross_amount"),
+                  hint="Optional; leave blank when only net is known.") }}
+      {{ wt_field(form.withholding_amount, input_class="money-input",
+                  autofocus=(first_err == "withholding_amount"),
+                  hint="Optional entered amount; no tax is inferred.") }}
+    </div>
+  </details>
+
+  {# data-reinvestment-details lets enhance.js open/close this block as the
+     outcome changes; without JS it stays an ordinary native disclosure and
+     re-opens server-side whenever a reinvestment outcome is submitted. #}
+  <details class="disclosure" data-reinvestment-details{% if form.outcome.data != "cash" or form.reinvestment_instrument_id.errors or form.reinvestment_quantity.errors or form.reinvestment_unit_price.errors or form.reinvestment_purchase_amount.errors or form.reinvestment_fee_amount.errors %} open{% endif %}>
+    <summary>Reinvestment details</summary>
+    <div class="disclosure-body stack">
+      <p class="hint">Required only when the dividend was reinvested. Enter actual units plus unit price or total purchase amount.</p>
+      {{ wt_field(form.reinvestment_instrument_id, typeahead=true,
+                  autofocus=(first_err == "reinvestment_instrument_id"),
+                  hint="Choose only for Reinvested in another instrument.") }}
+      {{ wt_field(form.reinvestment_quantity, input_class="money-input",
+                  autofocus=(first_err == "reinvestment_quantity")) }}
+      {{ wt_field(form.reinvestment_unit_price, input_class="money-input",
+                  autofocus=(first_err == "reinvestment_unit_price"),
+                  hint="Use this or Purchase amount.") }}
+      {{ wt_field(form.reinvestment_purchase_amount, input_class="money-input",
+                  autofocus=(first_err == "reinvestment_purchase_amount"),
+                  hint="Use this when the statement gives only the total purchase.") }}
+      {{ wt_field(form.reinvestment_fee_amount, input_class="money-input",
+                  autofocus=(first_err == "reinvestment_fee_amount"),
+                  hint="Optional; leave blank for no fee.") }}
+    </div>
+  </details>
+
+  <div id="preview-region" role="status" aria-live="polite">
+  {% if preview %}
+    <p class="preview-sentence">
+      Records {{ money({"amount": preview.income_amount, "currency": preview.currency_code}) }} dividend income{% if preview.withholding_amount %}, {{ money({"amount": preview.withholding_amount, "currency": preview.currency_code}) }} entered withholding{% endif %}, and {{ money({"amount": preview.net_amount, "currency": preview.currency_code}) }} received cash.
+    </p>
+    {% if preview.buy_preview %}
+    <p class="preview-sentence">
+      Linked Buy: {{ preview.reinvestment_quantity|trim_decimal|money_amount(none) }} units of {{ preview.reinvestment_instrument_name }} for {{ money({"amount": preview.reinvestment_purchase_amount, "currency": preview.currency_code}) }}{% if preview.reinvestment_fee_amount %} plus {{ money({"amount": preview.reinvestment_fee_amount, "currency": preview.currency_code}) }} fee{% endif %}.
+    </p>
+    {% endif %}
+    <p>Net account cash effect: {{ money({"amount": preview.cash_effect, "currency": preview.currency_code}) }}{% if preview.cash_account_id != preview.account_id %} — settles in <strong>{{ preview.cash_account_name }}</strong>{% endif %}.</p>
+    {% if preview.cash_effect < 0 %}
+    <p class="hint">The purchase exceeds the dividend received; the difference reduces account cash.</p>
+    {% endif %}
+    {% for warning in preview.warnings %}<p class="banner-warning">{{ warning }}</p>{% endfor %}
+  {% endif %}
+  </div>
+
+  <div class="form-actions">
+    {{ form.post_dividend(class_="btn btn-primary") }}
+    {{ form.preview_dividend(class_="btn", formaction=url_for('dividends.preview', **return_qs)) }}
+    <a class="btn btn-plain" href="{{ cancel_url }}">Cancel</a>
+  </div>
+</form>
+{{ currency_datalist() }}
+{% endblock %}

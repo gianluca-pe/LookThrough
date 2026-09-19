@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money %}
+{% block title %}Dividend recorded{% endblock %}
+{% block heading %}Dividend recorded{% endblock %}
+{% block content %}
+<div class="success-panel" tabindex="-1">
+  <p>
+    Recorded {{ money({"amount": receipt.income_amount, "currency": receipt.currency_code}) }} income from
+    <strong>{{ receipt.instrument_name }}</strong> in {{ receipt.account_name }} on
+    {{ receipt.effective_date|display_date }}{% if receipt.withholding_amount %}, with
+    {{ money({"amount": receipt.withholding_amount, "currency": receipt.currency_code}) }} entered withholding{% endif %}.
+    Net amount received: {{ money({"amount": receipt.net_amount, "currency": receipt.currency_code}) }}.
+  </p>
+  {% if receipt.buy_transaction_id %}
+  <p>
+    Linked Buy: <strong>{{ receipt.reinvestment_quantity|trim_decimal|money_amount(none) }} units</strong> of
+    <strong>{{ receipt.reinvestment_instrument_name }}</strong> for
+    {{ money({"amount": receipt.reinvestment_purchase_amount, "currency": receipt.currency_code}) }}{% if receipt.reinvestment_fee_amount %} plus {{ money({"amount": receipt.reinvestment_fee_amount, "currency": receipt.currency_code}) }} fee{% endif %}.
+  </p>
+  {% endif %}
+  <p>Net account cash effect: {{ money({"amount": receipt.cash_effect, "currency": receipt.currency_code}) }}{% if receipt.cash_account_name != receipt.account_name %} — settles in <strong>{{ receipt.cash_account_name }}</strong>{% endif %}.</p>
+  {% if receipt.cash_effect < 0 %}
+  <p class="hint">The purchase exceeded the dividend received; the difference reduced account cash.</p>
+  {% endif %}
+  <div class="next-actions">
+    <a class="btn" href="{{ url_for('dividends.new') }}">Add another dividend</a>
+    <a class="btn btn-plain" href="{{ url_for('positions.holdings') }}">View Holdings</a>
+    {# Undo links the dividend transaction; the reversal confirmation resolves
+       the whole linked group automatically. GET only, never a direct POST. #}
+    <a class="btn btn-plain" href="{{ url_for('activity.reverse', transaction_id=receipt.dividend_transaction_id) }}">Undo</a>
+  </div>
+</div>
+{% endblock %}

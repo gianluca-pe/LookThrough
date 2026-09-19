@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, error_summary, money, wt_field, wt_checkbox, currency_datalist, values_update_url %}
+{% block title %}Retirement{% endblock %}
+{% block heading %}Retirement{% endblock %}
+{% block scripts %}{% if projection_chart or spending_chart %}
+<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script>
+<script src="{{ static_url('js/charts.js') }}" defer></script>
+{% endif %}{% endblock %}
+{% block content %}
+<p class="lede">Plan the Core lifestyle you want to maintain and the Flexible spending that can adapt. Results follow your assumptions and the dated portfolio.</p>
+<p class="small"><a href="{{ url_for('retirement.scenarios', as_of=as_of_date.isoformat()) }}">Compare return scenarios</a> · <a href="{{ url_for('planning.targets') }}">Allocation targets</a>{% if not plan %} · <a href="{{ url_for('planning.retirement') }}">Existing retirement projection</a> · <a href="{{ url_for('planning.funding_assumptions') }}">Existing funding assumptions</a>{% endif %}</p>
+<form method="get" class="routine-date-form" novalidate>
+  <input type="hidden" name="path" value="{{ selected_path }}">
+  <div class="field"><label for="retirement-as-of">Portfolio as of</label>
+    <input id="retirement-as-of" type="date" name="as_of" value="{{ as_of_date.isoformat() }}" {% if as_of_error %}aria-invalid="true" aria-describedby="retirement-date-error" autofocus{% endif %}>
+    {% if as_of_error %}<p class="field-error" id="retirement-date-error">{{ as_of_error }}</p>{% endif %}</div>
+  <button class="btn" type="submit">Use portfolio date</button>
+</form>
+
+{% if plan %}
+{% include "retirement/_comparison.html" %}
+<section class="card" aria-labelledby="outcome-heading">
+  <div class="card-head"><h2 id="outcome-heading">{{ "Full-budget path" if selected_path == "full_budget" else "Adjustment-rule path" }}</h2>
+    {% if projection.calculation_complete and projection.status == "stale" %}{{ badge("stale", "Stale inputs") }} <span class="meta"><a href="{{ url_for('positions.show_values') }}">Update values and FX</a> to refresh the dated inputs.</span>{% endif %}</div>
+  {% if plan.spending_policy == selected_path %}
+  <p class="meta">This is the spending approach saved in your plan.</p>
+  {% else %}
+  <p class="meta">You are inspecting this path only. Your saved plan {{ "keeps your planned Flexible budget" if plan.spending_policy == "full_budget" else "applies your spending adjustment rules" }}; viewing another path changes neither your plan nor Overview.</p>
+  {% endif %}
+  {% if not projection.calculation_complete %}
+  {{ badge("missing", "Incomplete") }}
+  <ul>{% for reason in projection.reasons %}<li>
+    {% if reason.kind == "outside_plan_dates" %}Choose a portfolio date from the plan base date to before its final-age boundary.
+    {% elif reason.kind == "missing_income_fx" %}{{ reason.income_name }} needs {{ reason.base_currency }} → {{ reason.quote_currency }}. <a href="{{ values_update_url('fx', base_currency=reason.base_currency, quote_currency=reason.quote_currency) }}">Update income FX</a>.
+    {% elif reason.kind == "missing_spending_fx" %}{{ reason.detail }}. <a href="{{ url_for('positions.show_values') }}#routine-fx-heading">Review FX</a>.
+    {% elif reason.kind == "incomplete_cash" %}A cash balance is incomplete. <a href="{{ url_for('positions.show_values') }}#routine-cash-heading">Update cash</a>.
+    {% else %}A holding needs its value, FX, role, bucket or FD maturity. <a href="{{ url_for('positions.holdings') }}">Review Holdings</a>.
+    {% endif %}</li>{% endfor %}</ul>
+  {% else %}
+  {% set result = projection.lifestyle %}
+  <div class="outcome-lead">
+    <h3>Core lifestyle</h3>
+    <p class="outcome-state">{{ "No Core spending specified" if result.core_funded_all_years is none else "Funded in every retirement year under these assumptions" if result.core_funded_all_years else "Core shortfall" }}</p>
+    {% if result.first_core_shortfall %}<p>First at age {{ result.first_core_shortfall.age }} ({{ result.first_core_shortfall.boundary_date|display_date }}): {{ money({"amount": result.first_core_shortfall.core_shortfall_amount, "currency": projection.reporting_currency}) }} short of the {{ money({"amount": result.first_core_shortfall.core_target_amount, "currency": projection.reporting_currency}) }} target · {{ result.core_shortfall_years }} shortfall {{ "year" if result.core_shortfall_years == 1 else "years" }} · coverage no lower than {{ result.minimum_core_coverage_ratio|percentage_amount(1) }}%.</p>{% endif %}
+  </div>
+  <div class="outcome-grid">
+    <section aria-labelledby="outcome-flexible-heading"><h3 id="outcome-flexible-heading">Flexible spending</h3>
+      <dl class="kv">
+        <dt>Target met</dt><dd>{{ result.flexible_target_met_years }} of {{ result.flexible_target_years }} years with a positive target</dd>
+        <dt>Reductions</dt><dd>{{ result.flexible_cut_years }} {{ "year" if result.flexible_cut_years == 1 else "years" }} · longest run {{ result.longest_flexible_cut_streak }}{% if result.first_flexible_cut %} · first at age {{ result.first_flexible_cut.age }}{% endif %}</dd>
+        <dt>Smallest / average paid</dt><dd>{{ money({"amount": result.minimum_flexible_base_year_amount, "currency": projection.reporting_currency}) }} / {{ money({"amount": result.average_flexible_base_year_amount, "currency": projection.reporting_currency}) }} <span class="meta">in base-year purchasing power</span></dd>
+      </dl>
+    </section>
+    <section aria-labelledby="outcome-capital-heading"><h3 id="outcome-capital-heading">Capital and legacy</h3>
+      <dl class="kv">
+        <dt>Initial Core portfolio-funded rate</dt><dd>{{ (result.initial_core_withdrawal_rate|percentage_amount(2)) ~ "%" if result.initial_core_withdrawal_rate is not none else "Undefined — nonpositive capital" }}</dd>
+        <dt>Initial full-lifestyle portfolio-funded rate</dt><dd>{{ (result.initial_full_lifestyle_withdrawal_rate|percentage_amount(2)) ~ "%" if result.initial_full_lifestyle_withdrawal_rate is not none else "Undefined — nonpositive capital" }}</dd>
+        <dt>Ending portfolio at age {{ projection.assumption.final_age_years }}</dt><dd>{{ money({"amount": projection.final_value_amount, "currency": projection.reporting_currency}) }}</dd>
+        {% if plan.terminal_legacy_target_amount is not none %}<dt>Legacy objective</dt><dd>{% if projection.legacy_target_state %}{% if projection.legacy_target_gap_amount == 0 %}Exactly the amount you want to leave{% else %}{{ "Above" if projection.legacy_target_state == "met" else "Below" }} the target by {{ money({"amount": projection.legacy_target_gap_amount|abs, "currency": projection.reporting_currency}) }}{% endif %}{% if projection.legacy_target_status == "stale" %} · stale target FX{% endif %}{% else %}Target FX missing — comparison withheld. <a href="{{ values_update_url('fx', base_currency=plan.terminal_legacy_target_currency_code, quote_currency=projection.reporting_currency) }}">Update FX</a>{% endif %}</dd>{% endif %}
+      </dl>
+    </section>
+  </div>
+  {% if projection.projects_included_amount or projection.non_project_restricted_amount or projection.opening_negative_cash_amount %}
+  <p class="meta">{% if projection.projects_included_amount %}Projects {{ money({"amount": projection.projects_included_amount, "currency": projection.reporting_currency}) }} are reserved outside this path, receive no simulated return, and are assumed fully used for their separate purpose. {% endif %}{% if projection.non_project_restricted_amount %}Currently restricted {{ money({"amount": projection.non_project_restricted_amount, "currency": projection.reporting_currency}) }} remains in projected non-Project capital but cannot fund spending until access permits it.{% if projection.future_access_amount %} {{ money({"amount": projection.future_access_amount, "currency": projection.reporting_currency}) }} has a future access date recorded.{% endif %} {% endif %}{% if projection.opening_negative_cash_amount %}Negative cash {{ money({"amount": projection.opening_negative_cash_amount, "currency": projection.reporting_currency}) }} is repaid as an opening obligation.{% endif %}</p>
+  {% endif %}
+  {% if projection.future_access_sources %}
+  <details class="disclosure">
+    <summary>Restricted capital with future access</summary>
+    <ul>{% for source in projection.future_access_sources %}<li>{{ source.source_name }}: {{ money({"amount": source.current_amount, "currency": projection.reporting_currency}) }} — spendable from age {{ source.access_age }} ({{ source.access_date|display_date }})</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  <p class="hint">Included non-Project capital is modelled. Account access and FD maturity control withdrawals independently. Projects receive no simulated return here. Core funding is determined from actual annual payments, not a rate threshold or positive ending wealth.</p>
+  {% endif %}
+</section>
+
+{% if projection.calculation_complete %}
+{% set band_copy = {"lower": "below the first trigger", "middle": "between the triggers", "upper": "at or above the second trigger", "income_only": "income-only, with nonpositive capital", "full_budget": "keep the full Flexible budget"} %}
+{% set cut_reason_copy = {"rule": "your rule", "resources": "available money", "rule_and_resources": "your rule and available money", "none": ""} %}
+<section class="card" aria-labelledby="annual-heading">
+  <h2 id="annual-heading">Annual spending and portfolio path</h2>
+  {% if spending_chart %}
+  <h3>Actual spending by year</h3>
+  <div class="chart-box chart-box-tall" data-chart="retirement-spending"
+       data-labels="{{ spending_chart.labels|tojson|forceescape }}"
+       data-desired="{{ spending_chart.desired_values|tojson|forceescape }}"
+       data-core="{{ spending_chart.core_values|tojson|forceescape }}"
+       data-flexible="{{ spending_chart.flexible_values|tojson|forceescape }}"
+       data-currency="{{ spending_chart.currency }}" data-money-places="{{ spending_chart.currency|currency_places }}"><canvas aria-hidden="true"></canvas></div>
+  <p class="hint">Bars stack the Core and Flexible actually paid each year; the dashed line is the desired total. A shortfall year never shows its target as paid. The table below carries the same figures.</p>
+  {% endif %}
+  <div class="table-wrap"><table class="data"><caption>Actual annual payments in {{ projection.reporting_currency }}</caption>
+    <thead><tr><th scope="col">Age · boundary</th><th scope="col">Phase</th>{% for label in ["Desired total", "Core paid", "Flexible paid", "Income", "Withdrawn", "Ending capital"] %}<th scope="col" class="num">{{ label }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for year in projection.years %}<tr>
+      <th scope="row">{{ year.age }} <span class="muted">· {{ year.boundary_date|display_date }}</span>{% if year.core_shortfall_amount %} {{ badge("warning", "Core shortfall") }}{% endif %}</th>
+      <td>{{ year.phase|capitalize }}</td>
+      {% for key in ["spending_required_amount", "core_paid_amount", "flexible_paid_amount", "external_income_amount", "withdrawn_amount", "ending_value_amount"] %}<td class="num">{{ money({"amount": year[key], "currency": projection.reporting_currency}) }}{% if key == "flexible_paid_amount" and year.flexible_cut_amount %}<br><span class="meta">cut {{ money({"amount": year.flexible_cut_amount, "currency": projection.reporting_currency}) }} — {{ cut_reason_copy[year.flexible_cut_reason] }}</span>{% endif %}</td>{% endfor %}
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% if projection_chart %}
+  <h3>Ending capital</h3>
+  <div class="chart-box" data-chart="retirement" data-labels="{{ projection_chart.labels|tojson|forceescape }}" data-values="{{ projection_chart.ending_values|tojson|forceescape }}" data-currency="{{ projection_chart.currency }}" data-money-places="{{ projection_chart.currency|currency_places }}"><canvas aria-hidden="true"></canvas></div>
+  {% endif %}
+  <details class="disclosure"><summary>Full nominal detail for every year</summary>
+    <div class="table-wrap"><table class="data"><caption>Nominal annual payments in {{ projection.reporting_currency }}</caption>
+      <thead><tr><th scope="col">Age / boundary</th>{% for label in ["Starting capital", "Core target", "Core paid", "Core shortfall", "Flexible target", "Flexible allowed", "Flexible paid", "Income", "Withdrawn", "Ending capital"] %}<th scope="col" class="num">{{ label }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for year in projection.years %}<tr><th scope="row">{{ year.age }} · {{ year.boundary_date|display_date }}</th>{% for key in ["starting_value_amount", "core_target_amount", "core_paid_amount", "core_shortfall_amount", "flexible_target_amount", "flexible_allowed_amount", "flexible_paid_amount", "external_income_amount", "withdrawn_amount", "ending_value_amount"] %}<td class="num">{{ money({"amount": year[key], "currency": projection.reporting_currency}) }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table></div>
+  </details>
+  <h3>Per-year spending decisions and sources</h3>
+  <p class="hint">Open a year to see why spending changed and which sources paid for it. A withdrawal percentage is not a safety rating.</p>
+  {% for year in projection.years %}
+  <details class="year-detail">
+    <summary>Age {{ year.age }} · {{ year.phase|capitalize }} <span class="meta">— {{ year.boundary_date|display_date }}{% if year.phase == "withdrawal" %} · {% if year.full_lifestyle_withdrawal_rate is not none %}rate {{ year.full_lifestyle_withdrawal_rate|percentage_amount(2) }}%{% else %}rate undefined{% endif %} · {{ band_copy[year.flexible_band] }}{% if year.flexible_multiplier is not none and year.flexible_band != "full_budget" %}, allows {{ year.flexible_multiplier|percentage_amount(None) }}% of target{% endif %}{% if year.flexible_cut_amount %} · Flexible cut {{ money({"amount": year.flexible_cut_amount, "currency": projection.reporting_currency}) }} ({{ cut_reason_copy[year.flexible_cut_reason] }}){% endif %}{% endif %}</span></summary>
+    <dl class="kv">
+      {% if year.phase == "withdrawal" %}
+      <dt>Spending approach</dt><dd>{% if selected_path == "full_budget" %}Attempt the full Core and Flexible budget; available money still limits payment.{% else %}{% if year.full_lifestyle_withdrawal_rate is not none %}The full budget would need {{ year.full_lifestyle_withdrawal_rate|percentage_amount(2) }}% of starting capital after income{% else %}There is no positive starting capital, so the withdrawal percentage is undefined{% endif %}. Your rule is {{ band_copy[year.flexible_band] }}{% if year.flexible_multiplier is not none %} and allows {{ year.flexible_multiplier|percentage_amount(None) }}% of this year's Flexible budget ({{ money({"amount": year.flexible_allowed_amount, "currency": projection.reporting_currency}) }} of the {{ money({"amount": year.flexible_target_amount, "currency": projection.reporting_currency}) }} target){% endif %}.{% endif %}</dd>
+      {% if year.flexible_cut_amount %}
+      <dt>Why Flexible is lower</dt><dd>{% if year.flexible_cut_reason == "rule" %}Your rule reduces Flexible by {{ money({"amount": year.flexible_policy_cut_amount, "currency": projection.reporting_currency}) }}. This year's available money could pay the full target after Core.{% elif year.flexible_cut_reason == "resources" %}Available money after paying Core is {{ money({"amount": year.flexible_target_resource_shortfall_amount, "currency": projection.reporting_currency}) }} short of this year's full Flexible target.{% else %}Your rule reduces Flexible by {{ money({"amount": year.flexible_policy_cut_amount, "currency": projection.reporting_currency}) }}, and available money after paying Core is also {{ money({"amount": year.flexible_target_resource_shortfall_amount, "currency": projection.reporting_currency}) }} short of the full target.{% endif %} This is a one-year funding check, not a conclusion about later years.</dd>
+      {% endif %}
+      <dt>Flexible cut</dt><dd>Policy reduction {{ money({"amount": year.flexible_policy_cut_amount, "currency": projection.reporting_currency}) }} · shortage of actually available resources {{ money({"amount": year.flexible_resource_shortfall_amount, "currency": projection.reporting_currency}) }}</dd>
+      <dt>Income use</dt><dd>Opening obligations {{ money({"amount": year.income_to_obligation_amount, "currency": projection.reporting_currency}) }} · Core {{ money({"amount": year.income_to_core_amount, "currency": projection.reporting_currency}) }} · Flexible {{ money({"amount": year.income_to_flexible_amount, "currency": projection.reporting_currency}) }} · saved {{ money({"amount": year.income_saved_amount, "currency": projection.reporting_currency}) }}</dd>
+      {% else %}
+      <dt>Phase</dt><dd>Accumulation — withdrawals have not begun.</dd>
+      {% endif %}
+      <dt>Opening obligation remaining</dt><dd>{{ money({"amount": year.opening_obligation_remaining_amount, "currency": projection.reporting_currency}) }}</dd>
+      <dt>Modelled return after withdrawals</dt><dd>{{ money({"amount": year.return_amount, "currency": projection.reporting_currency}) }}</dd>
+    </dl>
+    {% if year.income_sources %}<ul>{% for source in year.income_sources %}<li>{{ source.name }}: {{ money({"amount": source.native_amount, "currency": source.currency}) }} → {{ money({"amount": source.amount, "currency": projection.reporting_currency}) }} · FX {{ source.fx_rate|trim_decimal }}, {{ source.fx_date|display_date if source.fx_date else "same currency" }} · {{ source.fx_path|join(" → ") }} · {{ source.status }}{% if source.status == "stale" %} · <a href="{{ values_update_url('fx', base_currency=source.currency, quote_currency=projection.reporting_currency) }}">Update income FX</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% if year.applications %}<ul>{% for source in year.applications %}<li>{{ source.source_name }} · {{ fire_bucket_labels[source.bucket_code] if source.bucket_code else "Cash" }} · {{ (source.purpose|default("opening obligation"))|capitalize }}: {{ money({"amount": source.amount, "currency": projection.reporting_currency}) }}{% if source.equity_exposed %} · Equity-exposed{% endif %}</li>{% endfor %}</ul>{% endif %}
+    <div class="table-wrap"><table class="data">
+      <caption>Ending allocation by role at age {{ year.age }}</caption>
+      <thead><tr><th scope="col">Role</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Share of ending assets</th></tr></thead>
+      <tbody>{% for role, amount in year.ending_role_values.items() %}<tr><th scope="row">{{ economic_role_labels[role] }}</th><td class="num">{{ money({"amount": amount, "currency": projection.reporting_currency}) }}</td><td class="num">{{ (year.ending_role_percentages[role]|percentage_amount(1)) ~ "%" if year.ending_role_percentages[role] is not none else "Not applicable" }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="table-wrap"><table class="data">
+      <caption>Ending capital by bucket at age {{ year.age }}</caption>
+      <thead><tr><th scope="col">Bucket or cash</th><th scope="col" class="num">Amount</th></tr></thead>
+      <tbody>{% for bucket, amount in year.ending_bucket_values.items() %}<tr><th scope="row">{{ "Cash" if bucket == "cash" else fire_bucket_labels[bucket] }}</th><td class="num">{{ money({"amount": amount, "currency": projection.reporting_currency}) }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </details>
+  {% endfor %}
+  <p class="hint">Withdrawals occur at the beginning of each retirement year; remaining role values then receive their returns. No automatic rebalancing occurs.</p>
+</section>
+{% endif %}
+
+<section class="card" aria-labelledby="income-heading">
+  <h2 id="income-heading">External retirement income</h2>
+  <p>Income is available only at retirement-year boundaries between its first and last eligible dates, inclusive. Each listed amount is a full annual payment, inflated on anniversaries of its first date. No payments are modelled before retirement.</p>
+  <p>After remaining opening obligations, income pays Core, then policy-allowed Flexible. Surplus becomes simulated accessible cash earning the Liquidity return. With nonpositive capital, Flexible is limited to remaining income and its target.</p>
+  {% if incomes %}<ul>{% for income in incomes %}<li><a href="{{ url_for('retirement.income', income_id=income.id) }}">{{ income.name }}</a> · {{ money({"amount": income.annual_amount, "currency": income.currency_code}) }} per year · {{ income.start_date|display_date }} to {{ income.end_date|display_date if income.end_date else "no end date" }}</li>{% endfor %}</ul>
+  {% else %}<p>No external income streams entered.</p>{% endif %}
+  <p><a class="btn" href="{{ url_for('retirement.income') }}">Add retirement income</a></p>
+</section>
+{% endif %}
+
+<section class="card" aria-labelledby="plan-heading">
+  <h2 id="plan-heading">{{ "Adopted plan" if plan else "Create your two-tier plan" }}</h2>
+  {% if plan %}
+  <dl class="plan-summary">
+    <div><dt>Base date · currency</dt><dd>{{ plan.base_date|display_date }} · {{ plan.currency_code }}</dd></div>
+    <div><dt>Ages</dt><dd>{{ plan.current_age_years }} now · withdrawals from {{ plan.withdrawal_start_age_years }} · end boundary {{ plan.final_age_years }}</dd></div>
+    <div><dt>Core spending</dt><dd>{{ money({"amount": plan.core_amount, "currency": plan.currency_code}) }} · {{ plan.core_inflation_decimal|percentage_amount(None) }}% inflation</dd></div>
+    <div><dt>Target Flexible spending</dt><dd>{{ money({"amount": plan.flexible_amount, "currency": plan.currency_code}) }} · {{ plan.flexible_inflation_decimal|percentage_amount(None) }}% inflation</dd></div>
+    <div><dt>Nominal returns</dt><dd>Equity {{ plan.equity_return_decimal|percentage_amount(None) }}% · Income {{ plan.income_return_decimal|percentage_amount(None) }}% · Liquidity {{ plan.liquidity_return_decimal|percentage_amount(None) }}% · Alternatives {{ plan.alternatives_return_decimal|percentage_amount(None) }}%</dd></div>
+    {% if plan.terminal_legacy_target_amount is not none %}<div><dt>Legacy objective</dt><dd>{{ money({"amount": plan.terminal_legacy_target_amount, "currency": plan.terminal_legacy_target_currency_code}) }} at the end boundary</dd></div>{% endif %}
+  </dl>
+  <p>Spending approach: {{ "keep my planned Flexible budget" if plan.spending_policy == "full_budget" else "apply my spending adjustment rules" }}.</p>
+  {% if plan.lower_rate_decimal is not none %}
+  <table class="data"><caption>Your saved adjustment rules{{ " (currently switched off)" if plan.spending_policy == "full_budget" }}. The trigger is the percentage of starting capital needed for the full budget after income. Rules do not consider remaining lifetime or your desired legacy.</caption>
+    <thead><tr><th scope="col">Full-lifestyle portfolio rate</th><th scope="col" class="num">Flexible allowed</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Below {{ plan.lower_rate_decimal|percentage_amount(None) }}%</th><td class="num">up to {{ plan.lower_multiplier_decimal|percentage_amount(None) }}% of target</td></tr>
+      <tr><th scope="row">{{ plan.lower_rate_decimal|percentage_amount(None) }}% up to {{ plan.upper_rate_decimal|percentage_amount(None) }}%</th><td class="num">up to {{ plan.middle_multiplier_decimal|percentage_amount(None) }}% of target</td></tr>
+      <tr><th scope="row">At or above {{ plan.upper_rate_decimal|percentage_amount(None) }}%</th><td class="num">up to {{ plan.upper_multiplier_decimal|percentage_amount(None) }}% of target</td></tr>
+    </tbody>
+  </table>
+  {% endif %}
+  {% if form.is_submitted() %}<p class="meta">These assumptions are under review; both paths above use your saved assumptions until you confirm adoption below.</p>{% endif %}
+  <details class="disclosure"{% if form.is_submitted() %} open{% endif %}>
+    <summary>Review or change these assumptions</summary>
+  {% endif %}
+  {% if not plan %}<p>Your existing annual budget is {{ money({"amount": portfolio.annual_spending_amount, "currency": portfolio.annual_spending_currency_code}) }}. Enter your own Core/Flexible split. Existing planning stays in use until you adopt this plan.</p>{% endif %}
+  <p class="hint">Amounts and current age refer to the plan base date. Full years run from the selected portfolio date to its anniversaries; no partial-year payments are prorated. Final age is the end boundary.</p>
+  {{ error_summary(form) }}
+  <form method="post" class="stack" novalidate>
+    {{ form.hidden_tag() }}
+    {% set focus = namespace(used=false) %}
+    {% for legend, fields in [
+      ("Spending approach", ["spending_policy"]),
+      ("Dates and currency", ["base_date", "currency_code", "current_age_years", "withdrawal_start_age_years", "final_age_years"]),
+      ("Core and Flexible spending", ["core_amount", "flexible_amount", "core_inflation_percent", "flexible_inflation_percent"]),
+      ("Nominal returns in the plan currency", ["equity_return_percent", "income_return_percent", "liquidity_return_percent", "alternatives_return_percent"]),
+      ("Optional spending adjustment rules", ["lower_rate_percent", "upper_rate_percent", "lower_multiplier_percent", "middle_multiplier_percent", "upper_multiplier_percent"]),
+      ("Optional legacy objective", ["terminal_legacy_target_amount", "terminal_legacy_target_currency_code"])] %}
+    {% if legend == "Optional spending adjustment rules" %}<details class="disclosure" data-spending-rules-details{% if form.is_submitted() or form.spending_policy.data == "guardrails" %} open{% endif %}><summary>Set or review my spending adjustment rules</summary>{% endif %}
+    <fieldset class="stack"><legend>{{ legend }}</legend>
+      {% if legend == "Spending approach" %}<p class="hint">Keeping your budget attempts the full amount each year. Adjustment rules can reduce or increase Flexible spending at your chosen withdrawal percentages. Both approaches still pay Core first and respect access to your money.</p>{% endif %}
+      {% if legend == "Optional spending adjustment rules" %}<p class="hint">Leave all five fields blank for a new full-budget plan. To apply rules, enter both triggers and all three spending shares. 100% keeps that year's Flexible budget; 50% halves it; 120% increases it by one fifth. This is not a repeated cut from last year's spending. Equality uses the next trigger range. Switching rules off keeps previously saved rules for comparison.</p>{% endif %}
+      <div class="form-grid">
+      {% for name in fields %}{% set field = form[name] %}
+        {{ wt_field(field, required=(legend != "Optional legacy objective" and (legend != "Optional spending adjustment rules" or form.spending_policy.data == "guardrails")), autofocus=(true if field.errors and not focus.used and not as_of_error else false), currency_suggest=("currency" in name)) }}
+        {% if field.errors %}{% set focus.used = true %}{% endif %}
+      {% endfor %}
+      </div>
+    </fieldset>
+    {% if legend == "Optional spending adjustment rules" %}</details>{% endif %}
+    {% endfor %}
+    <p class="hint">Use nominal total returns with any ongoing investment costs already reflected. Dividend income and FD principal already represented by portfolio capital must not be added again as external income. Future FX is held constant at the selected portfolio date.</p>
+    {% if preview %}<div class="card" role="status"><h3{% if not focus.used and not as_of_error and not form.confirm_adoption.errors %} tabindex="-1" autofocus{% endif %}>Review adoption</h3>
+      <p>Desired annual spending: {{ money({"amount": preview.total_amount, "currency": preview.currency}) }} at {{ preview.base_date|display_date }}. Retirement and Overview will use this plan. Overview funds the full desired budget; income and Flexible reductions affect the retirement projection.</p>
+      <p>Spending approach: <strong>{{ "keep my planned Flexible budget" if preview.spending_policy == "full_budget" else "apply my spending adjustment rules" }}</strong>. Your legacy objective compares the ending balance; it does not automatically set spending.</p>
+      <p>The comparison and annual paths above still use your saved assumptions; they update only when you adopt this plan.</p>
+      {{ wt_checkbox(form.confirm_adoption, autofocus=(true if form.confirm_adoption.errors and not focus.used and not as_of_error else false)) }}
+      {{ form.save_projection(class_="btn btn-primary") }}
+    </div>{% endif %}
+    <div class="form-actions">{{ form.preview_plan(class_="btn") }}</div>
+  </form>
+  {% if plan %}</details>{% endif %}
+</section>
+{{ currency_datalist() }}
+{% endblock %}

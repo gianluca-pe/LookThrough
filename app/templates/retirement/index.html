@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_macros.html" import error_summary, wt_field, first_error, currency_datalist %}
+{% block title %}Retirement{% endblock %}
+{% block heading %}Can I retire on this portfolio?{% endblock %}
+{% block scripts %}{% if chart %}<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script><script src="{{ static_url('js/charts.js') }}" defer></script>{% endif %}{% endblock %}
+{% block content %}
+<div class="retirement-workspace">
+<p class="lede">Under your assumptions, from where you stand today — see the lifestyle your portfolio can support. Revisit as life and balances change.</p>
+<section class="card retirement-assumptions" aria-labelledby="assumptions-heading">
+<h2 id="assumptions-heading">Assumptions in this projection</h2>
+{% if result %}
+{% set p = result.projection.plan %}
+<div class="retirement-facts">
+<div><span>Retire at</span><strong>{{ p.withdrawal_start_age_years }}</strong><small>Age now {{ p.current_age_years }} · through {{ p.final_age_years }}</small></div>
+<div><span>Core / year</span><strong>{{ p.currency_code }} {{ p.core_amount|money_amount(currency=p.currency_code) }}</strong><small>Today's purchasing power</small></div>
+<div><span>Money left at {{ p.final_age_years }}</span><strong>{{ p.currency_code }} {{ p.terminal_legacy_target_amount|money_amount(currency=p.currency_code) }}</strong><small>Today's purchasing power</small></div>
+<div><span>Inflation / year</span><strong>{{ p.core_inflation_decimal|percentage_amount(2) }}%</strong><small>Core, Flexible and money left</small></div>
+</div>
+<p class="meta">Portfolio &amp; today's money: {{ p.base_date|display_date }} · Net savings while working: {{ p.currency_code }} {{ p.annual_savings_amount|money_amount(currency=p.currency_code) }}/year.</p>
+{% if result.projection.years %}<p class="meta">Starting retirement capital: {{ p.currency_code }} {{ result.projection.years[0].starting_value_amount|money_amount(currency=p.currency_code) }} · Mix: {% for role, weight in starting_mix.items() %}{{ role|capitalize }} {{ weight|percentage_amount(1) }}%{{ ' / ' if not loop.last }}{% endfor %}. Projects excluded.</p>{% endif %}
+<p class="meta">Nominal returns: Equity {{ p.equity_return_decimal|percentage_amount(2) }}% · Income {{ p.income_return_decimal|percentage_amount(2) }}% · Liquidity {{ p.liquidity_return_decimal|percentage_amount(2) }}% · Alternatives {{ p.alternatives_return_decimal|percentage_amount(2) }}%.</p>
+{% else %}
+<p>Set the essentials below to find your affordable Flexible allowance.</p>
+{% endif %}
+<details class="disclosure" {% if not result or form.errors %}open{% endif %}>
+<summary>Change assumptions</summary>
+<form method="post" novalidate id="affordability-form">
+{{ form.hidden_tag() }}{{ error_summary(form) }}
+{% set first = first_error(form, ['base_date','currency_code','current_age_years','withdrawal_start_age_years','final_age_years','core_amount','annual_savings_amount','terminal_legacy_target_amount','inflation_percent','equity_return_percent','income_return_percent','liquidity_return_percent','alternatives_return_percent']) %}
+<div class="retirement-inputs">
+{% for name in ['base_date','currency_code','current_age_years','withdrawal_start_age_years','final_age_years','core_amount','annual_savings_amount','terminal_legacy_target_amount','inflation_percent'] %}
+{{ wt_field(form[name], required=true, autofocus=(first == name), currency_suggest=(name == 'currency_code'), hint=('Enter 0 for no savings. Added at year-end in the starting portfolio mix; savings stop at retirement.' if name == 'annual_savings_amount' else none)) }}
+{% endfor %}
+</div>
+<fieldset><legend>Annual returns, before inflation</legend><div class="retirement-inputs retirement-returns">{% for role in ['equity','income','liquidity','alternatives'] %}{{ wt_field(form[role ~ '_return_percent'], required=true, autofocus=(first == role ~ '_return_percent')) }}{% endfor %}</div></fieldset>
+<p class="hint">While working, salary covers your living costs. During retirement, the model pays spending at the start of each year, then applies that year's returns.</p>
+{{ form.project(class='btn btn-primary') }}
+</form>
+</details>
+<p class="meta">Planned retirement income: {% if incomes %}{% for income in incomes %}<a href="{{ url_for('retirement.income', income_id=income.id) }}">{{ income.name }}</a>{{ ', ' if not loop.last }}{% endfor %}{% else %}none{% endif %}{% if plan %} · <a href="{{ url_for('retirement.income') }}">Add income</a>{% else %}. Save a plan to add income.{% endif %}</p>
+</section>
+{% if result %}
+{% set p = result.projection.plan %}
+<section class="card retirement-answer" aria-labelledby="answer-heading">
+{% if result.status == 'missing' %}
+<h2 id="answer-heading">A few portfolio inputs are missing</h2><p>Complete the source values, classification or access information before calculating an allowance.</p><p><a href="{{ url_for('positions.holdings') }}">Review Holdings</a> · <a href="{{ url_for('positions.show_values') }}">Update values and FX</a></p>
+{% elif result.status == 'limit' %}
+<h2 id="answer-heading">The allowance exceeds the supported amount</h2><p>Check the amounts and return assumptions. No maximum is shown.</p>
+{% else %}
+<h2 id="answer-heading">{% if result.status == 'funded' %}Retiring at {{ p.withdrawal_start_age_years }}, {{ 'you could draw from your portfolio and planned income' if result.includes_planned_income else 'you could withdraw' }}{% elif result.status == 'core_only' %}Core fits. There is no room for Flexible spending.{% else %}No room for Flexible spending{% endif %}</h2>
+{% if result.status == 'funded' %}<p class="retirement-big">{{ p.currency_code }} {{ result.total_monthly|money_amount(currency=p.currency_code) }} <span>/ month</span></p>{% endif %}
+<p class="hint">Before any taxes on portfolio withdrawals. The simulator does not deduct these taxes; they would reduce the amount available for your lifestyle.</p>
+<div class="retirement-allowance"><div><span>Core budget / month</span><strong>{{ p.currency_code }} {{ result.core_monthly|money_amount(currency=p.currency_code) }}</strong></div><div><span>Flexible allowance / month</span><strong>{{ p.currency_code }} {{ result.flexible_monthly|money_amount(currency=p.currency_code) }}</strong></div></div>
+{% if result.status in ['funded','core_only'] %}
+<p>Your Core lifestyle{% if result.flexible_amount %} plus <strong>{{ p.currency_code }} {{ result.flexible_amount|money_amount(currency=p.currency_code) }}/year Flexible</strong>{% endif %} is funded in every retirement year, leaving <strong>{{ p.currency_code }} {{ result.final_today_amount|money_amount(currency=p.currency_code) }} at age {{ p.final_age_years }}</strong>.</p>
+{% elif result.status == 'goal_shortfall' %}
+<p>Core is funded through age {{ p.final_age_years }}, but leaves {{ p.currency_code }} {{ result.final_today_amount|money_amount(currency=p.currency_code) }} — {{ p.currency_code }} {{ result.legacy_gap_today|abs|money_amount(currency=p.currency_code) }} less than you want.</p>
+{% else %}
+<p><strong>Core first falls short at age {{ result.first_core_shortfall.age }}.</strong> {% if result.shortfall_cause == 'access' %}Capital remains, but available money cannot cover that year's Core spending.{% else %}Available money runs out while paying that year's Core spending.{% endif %} This plan does not fund your Core lifestyle through age {{ p.final_age_years }}.</p>
+{% endif %}
+<p class="hint">All amounts above are in {{ p.base_date|display_date }} purchasing power. Monthly amounts are equivalents of annual spending. This is a deterministic projection under your assumptions.</p>
+{% if result.projection.status == 'stale' %}<p class="notice">Some portfolio inputs are stale. <a href="{{ url_for('positions.show_values') }}">Refresh values and FX</a> before relying on this result.</p>{% endif %}
+{% if result.total_amount > 0 %}<form method="post" class="retirement-save">{{ form.csrf_token(id='save-csrf-token') if form.csrf_token is defined }}<input type="hidden" name="review" value="{{ review_token }}"><button class="btn" type="submit" name="save_plan" value="1">Save as my plan</button><span class="hint">Sets Overview's spending to this Core + Flexible allowance.</span></form>{% endif %}
+{% endif %}
+</section>
+{% if chart %}
+<section class="card" aria-labelledby="spending-heading">
+<h2 id="spending-heading">Actual spending by year</h2>
+<p class="meta">{{ p.currency_code }} / year · Bars: nominal, including inflation · Dashed line: the same spending in today's money</p>
+{% set selected = result.projection.years[chart.initial_index] %}
+<div class="retirement-year-readout" aria-live="polite" aria-atomic="true">
+  <div><span id="spending-year-label">Payments at age {{ selected.age }}</span><strong id="spending-nominal">{{ p.currency_code }} {{ selected.total_paid_amount|money_amount(currency=p.currency_code) }} / year</strong></div>
+  <div><span>Equivalent in today's money</span><strong id="spending-today">{{ p.currency_code }} {{ selected.total_paid_today|money_amount(currency=p.currency_code) }} / year</strong></div>
+</div>
+<div class="retirement-year-picker" hidden>
+  <label for="spending-year">Inspect age <output id="spending-age" for="spending-year">{{ selected.age }}</output></label>
+  <input id="spending-year" type="range" min="0" max="{{ chart.ages|length - 1 }}" step="1" value="{{ chart.initial_index }}" aria-valuetext="Age {{ selected.age }}">
+</div>
+<div class="chart-box chart-box-tall" data-chart="affordability" data-series="spending"
+     data-labels="{{ chart.ages|tojson|forceescape }}" data-core="{{ chart.core|tojson|forceescape }}"
+     data-flexible="{{ chart.flexible|tojson|forceescape }}" data-total="{{ chart.total|tojson|forceescape }}"
+     data-today="{{ chart.today|tojson|forceescape }}" data-currency="{{ p.currency_code }}" data-money-places="{{ p.currency_code|currency_places }}"
+     role="img" aria-label="Annual Core and Flexible payments in nominal amounts, with a dashed line showing the same payments in today's purchasing power. Exact figures in the detailed annual path linked below."><canvas aria-hidden="true"></canvas></div>
+<p class="hint">The line is another way to read the same payments, not an extra allowance. If Core falls short, both reflect what can actually be paid. Working-year living costs are covered outside this projection.</p>
+</section>
+<section class="card" aria-labelledby="capital-heading">
+<h2 id="capital-heading">Ending capital</h2>
+<p class="meta">{{ p.currency_code }} · today's purchasing power · age at the end of the year</p>
+<p id="capital-goal">Your goal at age {{ p.final_age_years }}: <strong>{{ p.currency_code }} {{ result.legacy_today_amount|money_amount(currency=p.currency_code) }} in today's money</strong> = <strong>{{ p.currency_code }} {{ result.legacy_nominal_amount|money_amount(currency=p.currency_code) }} in that year's money (nominal)</strong>, using your {{ p.core_inflation_decimal|percentage_amount(2) }}% inflation assumption.</p>
+{% set ending = result.projection.years[-1] %}
+<div class="retirement-year-readout" aria-live="polite" aria-atomic="true">
+  <div><span id="capital-year-label">Capital at age {{ ending.ending_age }} · today’s money</span><strong id="capital-today">{{ p.currency_code }} {{ ending.ending_value_today|money_amount(currency=p.currency_code) }}</strong></div>
+  <div><span>Equivalent in that year's money (nominal)</span><strong id="capital-nominal">{{ p.currency_code }} {{ ending.ending_value_amount|money_amount(currency=p.currency_code) }}</strong></div>
+</div>
+<div class="retirement-year-picker" hidden>
+  <label for="capital-year">Inspect age <output id="capital-age" for="capital-year">{{ ending.ending_age }}</output></label>
+  <input id="capital-year" type="range" min="0" max="{{ chart.ending_ages|length - 1 }}" step="1" value="{{ chart.ending_ages|length - 1 }}" aria-valuetext="Age {{ ending.ending_age }}">
+</div>
+<div class="chart-box chart-box-tall" data-chart="affordability" data-series="capital"
+     data-labels="{{ chart.ending_ages|tojson|forceescape }}" data-capital="{{ chart.capital|tojson|forceescape }}" data-nominal="{{ chart.capital_nominal|tojson|forceescape }}"
+     data-goal="{{ chart.goal|tojson|forceescape }}" data-currency="{{ p.currency_code }}" data-money-places="{{ p.currency_code|currency_places }}"
+     role="img" aria-label="Capital remaining at each year end and your final-age goal, in today's money. Inspect an age to see its nominal equivalent. Exact figures in the detailed annual path linked below."><canvas aria-hidden="true"></canvas></div>
+<p class="hint">The dashed line marks the amount you want left at {{ p.final_age_years }}; it is an end goal, not a minimum balance for every year.</p>
+</section>
+{% endif %}
+<p class="retirement-details"><a href="{{ url_for('retirement.details', review=review_token) }}" target="_blank" rel="noopener">View / print detailed assumptions &amp; annual path <span class="meta">(new tab)</span></a></p>
+{% if result.flexible_amount is not none %}<section class="card"><h2>Test changing investment returns</h2><p>See how often this lifestyle holds up across simulated market paths, and compare your current mix with another allocation.</p><a class="btn" href="{{ url_for('monte_carlo.index', review=review_token) }}">Test with Monte Carlo</a><p class="hint">Uses the reviewed assumptions above. The first risk profile models USD outcomes.</p></section>{% endif %}
+<noscript><p>The detailed annual path includes the data for both charts. Projections and saving work without JavaScript.</p></noscript>
+{% endif %}
+<p class="meta retirement-history"><a href="{{ url_for('retirement.scenarios') }}">Saved return comparisons</a></p>
+</div>
+{{ currency_datalist() }}
+{% endblock %}

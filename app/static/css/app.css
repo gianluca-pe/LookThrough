@@ -1,0 +1,1282 @@
+/* LookThrough — app.css
+   Single hand-written stylesheet. Tokens first; no framework, no build step.
+   Shared presentation tokens and component styles */
+
+/* ---------- 1. Design tokens ---------- */
+
+:root {
+  /* Neutrals (warm grey, slightly desaturated) */
+  --color-bg:            #faf9f7;
+  --color-surface:       #ffffff;
+  --color-surface-sunk:  #f3f1ed;
+  --color-border:        #e2ded8;
+  --color-border-strong: #c9c3b9;
+  --color-text:          #23211e;
+  --color-text-muted:    #6b675f;
+  --color-text-faint:    #9a958b;
+
+  /* Accent: deep green */
+  --color-accent:        #1a5c45;
+  --color-accent-strong: #124736;
+  --color-accent-soft:   #e3efe9;
+
+  /* Semantic states */
+  --color-warning:       #8a5a00;
+  --color-warning-soft:  #faf0dc;
+  --color-danger:        #a33327;
+  --color-danger-soft:   #f9e7e4;
+  --color-missing:       #6b675f;
+  --color-focus:         #2f6fb2;
+
+  /* Typography */
+  --font-ui:  ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-num: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+
+  /* Spacing, shape, elevation */
+  --space-1: 0.25rem;  --space-2: 0.5rem;  --space-3: 0.75rem;
+  --space-4: 1rem;     --space-5: 1.5rem;  --space-6: 2rem;
+  --radius: 6px;
+  --shadow-card: 0 1px 2px rgb(35 33 30 / 0.06);
+
+  --sidebar-w: 220px;
+  --content-max: 1120px;
+}
+
+/* ---------- 2. Reset & base ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: 1.45;
+}
+
+h1 { font-size: var(--text-xl); margin: 0 0 var(--space-1); font-weight: 650; }
+h2 { font-size: var(--text-lg); margin: 0 0 var(--space-3); font-weight: 600; }
+h3 { font-size: var(--text-md); margin: 0 0 var(--space-2); font-weight: 600; }
+p  { margin: 0 0 var(--space-3); }
+
+a { color: var(--color-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.muted { color: var(--color-text-muted); }
+.faint { color: var(--color-text-faint); }
+.small { font-size: var(--text-sm); }
+.meta  { font-size: var(--text-xs); color: var(--color-text-muted); }
+/* Page-intro paragraph above a form or task list (Guide, routine creation). */
+.lede {
+  color: var(--color-text-muted);
+  max-width: 46rem;
+  margin-bottom: var(--space-5);
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: -3rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  padding: var(--space-2) var(--space-3);
+  z-index: 100;
+  transition: top 0.1s;
+}
+.skip-link:focus { top: var(--space-3); }
+
+/* ---------- 3. Shell: top bar + sidebar ---------- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 3.25rem;
+  padding: 0 var(--space-5);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+.topbar .brand { font-weight: 650; letter-spacing: 0.01em; }
+.topbar .brand .portfolio-name {
+  font-weight: 400;
+  color: var(--color-text-muted);
+  margin-left: var(--space-2);
+}
+.topbar .spacer { flex: 1; }
+
+.shell {
+  display: grid;
+  /* minmax(0, 1fr): a wide table inside a.table-wrap must scroll within the
+     content column, not force the page itself wider than the window. */
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: calc(100vh - 3.25rem);
+}
+
+.sidebar {
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: var(--space-4) var(--space-3);
+}
+.sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+.sidebar a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: var(--text-md);
+}
+.sidebar a:hover { background: var(--color-surface-sunk); text-decoration: none; }
+.sidebar a[aria-current="page"] {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-weight: 600;
+}
+.sidebar .nav-disabled {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  font-size: var(--text-md);
+  color: var(--color-text-faint);
+  cursor: default;
+}
+
+.main {
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+.main > * { max-width: var(--content-max); }
+
+.page-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.page-head .as-of { margin-left: auto; font-size: var(--text-sm); color: var(--color-text-muted); }
+
+/* Narrow screens: sidebar is replaced by the <details> menu in the topbar.
+   No JavaScript required. */
+.nav-menu { display: none; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { display: none; }
+  .main { padding: var(--space-4); }
+
+  .nav-menu { display: block; position: relative; margin-left: var(--space-3); }
+  .nav-menu summary {
+    list-style: none;
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    user-select: none;
+  }
+  .nav-menu summary::-webkit-details-marker { display: none; }
+  .nav-menu summary::after { content: " ▾"; color: var(--color-text-muted); }
+  .nav-menu[open] summary::after { content: " ▴"; }
+  .nav-menu-panel {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 4px);
+    z-index: 20;
+    min-width: 13rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+  }
+  .nav-menu-panel a {
+    display: block;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius);
+    color: var(--color-text);
+  }
+  .nav-menu-panel a:hover { background: var(--color-surface-sunk); text-decoration: none; }
+  .nav-menu-panel a[aria-current="page"] {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-strong);
+    font-weight: 600;
+  }
+  .nav-menu-panel .nav-disabled {
+    display: block;
+    padding: var(--space-2) var(--space-3);
+    color: var(--color-text-faint);
+  }
+}
+
+/* ---------- 4. Buttons ---------- */
+
+.btn {
+  display: inline-block;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.btn:hover { background: var(--color-surface-sunk); text-decoration: none; }
+
+.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.btn-primary:hover { background: var(--color-accent-strong); }
+
+.btn-plain {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-accent);
+}
+.btn-plain:hover { background: var(--color-accent-soft); }
+
+.btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: default;
+}
+.btn-primary[aria-disabled="true"]:hover { background: var(--color-accent); }
+
+/* ---------- 5. Cards & headline figures ---------- */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.headline {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl);
+  font-weight: 650;
+  margin: var(--space-1) 0 var(--space-2);
+}
+/* .card-label supports h2 elements in the heading outline; reset the heading
+   weight and margin to preserve the compact small-caps label style. */
+.card > .card-label {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* ---------- 6. Money ---------- */
+
+.money {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.money .ccy {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-right: 0.2em;
+}
+.money-reporting {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.money-missing {
+  font-style: italic;
+  color: var(--color-missing);
+  white-space: normal;
+}
+
+/* ---------- 7. Badges ---------- */
+
+.badge {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-style: normal;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.badge-stale,
+.badge-warning {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+.badge-warning { font-weight: 600; }
+.badge-missing {
+  color: var(--color-missing);
+  border-style: dashed;
+  border-color: var(--color-border-strong);
+  background: transparent;
+  font-style: italic;
+}
+
+/* ---------- 8. Tables ---------- */
+
+.table-wrap { overflow-x: auto; }
+
+/* FX maintenance follows the existing settings cards and table typography. */
+.fx-heading-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap; }
+.fx-heading-row h2 { margin-bottom:0; }
+.fx-heading-row .eyebrow { color:var(--color-text-muted); font-size:var(--text-xs); letter-spacing:.06em; text-transform:uppercase; margin:0 0 var(--space-1); }
+#fx-settings .form-actions form { margin:0; }
+#fx-settings .btn { white-space:normal; text-align:center; }
+#fx-settings .meta { overflow-wrap:anywhere; }
+#fx-settings details + details { margin-top:var(--space-3); }
+.fx-manual-table .field { margin:0; }
+.fx-manual-table input { min-width:9rem; max-width:14rem; }
+.fx-manual-table th .meta { font-weight:normal; }
+@media (max-width: 600px) {
+  .fx-manual-table thead { display:none; }
+  .fx-manual-table, .fx-manual-table tbody, .fx-manual-table tr, .fx-manual-table td, .fx-manual-table th { display:block; width:100%; }
+  .fx-manual-table tr { padding:var(--space-3) 0; border-bottom:1px solid var(--color-border); }
+  .fx-manual-table td, .fx-manual-table th { padding:var(--space-2) 0; border:0; }
+  .fx-manual-table .fx-previous::before { content:'Last saved · units per EUR: '; color:var(--color-text-muted); }
+  .fx-manual-table input { width:100%; max-width:none; min-width:0; }
+}
+.badge-success { color:var(--color-text-muted); border-color:var(--color-border-strong); }
+
+/* Keep the two Overview reserve comparisons readable without horizontal panning. */
+.funding-mobile-label { display: none; }
+.chart-box.funding-chart { width:100%; max-width:none; height:220px; }
+#funding-targets .money { white-space:nowrap; }
+.funding-under { color:var(--color-warning, #8a5a16); }
+.funding-percent { display:block; font-family:var(--font-num); }
+#funding-detail { margin-top:var(--space-4); }
+@media (max-width:600px) {
+  #funding-targets th, #funding-targets td { padding:6px 3px; font-size:var(--text-xs); }
+  #funding-targets .ccy { display:block; }
+  #funding-targets td .money { font-size:var(--text-xs); }
+}
+@media (max-width: 600px) {
+  #funding-reserves thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  #funding-reserves,
+  #funding-reserves tbody,
+  #funding-reserves tr,
+  #funding-reserves th,
+  #funding-reserves td { display: block; width: auto; }
+  #funding-reserves tr + tr { margin-top: var(--space-4); }
+  #funding-reserves td { text-align: left; }
+  #funding-reserves .funding-mobile-label {
+    display: block;
+    color: var(--color-text-muted);
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+  }
+}
+
+/* Stacked status content in a table cell: badges, dates, and row actions
+   keep a consistent gap instead of ad-hoc <br> spacing, and wrap cleanly
+   when the column narrows. */
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+table.data th {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-strong);
+}
+table.data td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+table.data .num { text-align: right; }
+table.data th.num { text-align: right; }
+table.data tr.total td {
+  border-top: 3px double var(--color-border-strong);
+  border-bottom: 0;
+  font-weight: 600;
+}
+table.data td .money { font-size: var(--text-sm); }
+/* Wide tables (Holdings, routine update): a quiet hover tint keeps the eye
+   on one row across many columns. State colors never rely on this alone. */
+table.data tbody tr:hover { background: var(--color-surface-sunk); }
+
+/* ---------- 9. Forms ---------- */
+
+form.stack { max-width: 34rem; }
+.field { margin-bottom: var(--space-4); }
+.field label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.field label .req { color: var(--color-text-muted); font-weight: 400; }
+.field .hint { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1); }
+.field input,
+.field select {
+  font: inherit;
+  font-size: var(--text-md);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.field input[type="number"], .field input.money-input {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.field input[aria-invalid="true"] { border-color: var(--color-danger); }
+.field .field-error { color: var(--color-danger); font-size: var(--text-xs); margin-top: var(--space-1); }
+
+.form-actions { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-5); }
+
+/* Short definitions beside the classification inputs. The terms stay visible
+   for both the one-role and percentage-split paths. */
+.classification-definitions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.classification-definitions div { min-width: 0; }
+.classification-definitions dt { display: inline; font-weight: 600; color: var(--color-text); }
+.classification-definitions dd { display: inline; margin: 0; }
+.classification-definitions dd::before { content: " "; }
+@media (max-width: 700px) {
+  .classification-definitions { grid-template-columns: 1fr; }
+}
+
+.classification-role-split > .hint { margin-top: calc(-1 * var(--space-2)); }
+
+/* Compact filter grids (activity history): fields wrap to one column when
+   narrow, keeping every control reachable at small widths. */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  column-gap: var(--space-3);
+}
+
+details.disclosure {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  background: var(--color-surface);
+}
+details.disclosure summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* ---------- 10. Messages & banners ---------- */
+
+.flashes { max-width: 46rem; margin-bottom: var(--space-4); }
+.flash {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+}
+.flash-info {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-sunk);
+}
+.flash-success {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.flash-warning {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+.flash-error {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.error-summary {
+  border: 1px solid var(--color-danger);
+  background: var(--color-danger-soft);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  max-width: 34rem;
+}
+.error-summary h2 { font-size: var(--text-md); color: var(--color-danger); margin-bottom: var(--space-2); }
+.error-summary ul { margin: 0; padding-left: var(--space-5); font-size: var(--text-sm); }
+.error-summary a { color: var(--color-danger); text-decoration: underline; }
+
+.banner-warning {
+  border: 1px solid var(--color-warning);
+  background: var(--color-warning-soft);
+  color: var(--color-text);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  max-width: 46rem;
+}
+
+.success-panel {
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+  max-width: 46rem;
+}
+.success-panel h2 { font-size: var(--text-lg); color: var(--color-accent-strong); }
+.success-panel .next-actions { display: flex; gap: var(--space-3); margin-top: var(--space-3); }
+
+/* Trade preview sentence */
+.preview-sentence {
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface-sunk);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-md);
+  max-width: 34rem;
+  margin-bottom: var(--space-4);
+}
+
+/* ---------- 11. Attention list ---------- */
+
+.attention-list { list-style: none; margin: 0; padding: 0; }
+.attention-list li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+.attention-list li:last-child { border-bottom: 0; }
+.attention-list .what { flex: 1; }
+.attention-list .marker { color: var(--color-warning); font-weight: 700; }
+
+/* ---------- 12. Charts ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- 13. Accessibility helpers ---------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- 14. Setup flow ---------- */
+
+.setup-layout {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .setup-layout { grid-template-columns: 1fr; gap: var(--space-4); }
+}
+
+.setup-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: sticky;
+  top: 4rem;
+}
+@media (max-width: 900px) {
+  .setup-steps { position: static; flex-direction: row; flex-wrap: wrap; }
+}
+.setup-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.setup-steps li > a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+  border-radius: var(--radius);
+}
+.setup-steps li > a:hover { text-decoration: none; }
+.setup-steps li > a:hover .step-label { text-decoration: underline; }
+.step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  flex: none;
+}
+.setup-steps li.step-current {
+  color: var(--color-accent-strong);
+  font-weight: 600;
+}
+.setup-steps li.step-current .step-marker {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+}
+.setup-steps li.step-complete .step-marker {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.setup-steps li.step-upcoming { color: var(--color-text-faint); }
+.setup-steps li.step-upcoming .step-marker { border-style: dashed; }
+
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.field-check input[type="checkbox"] { width: auto; margin: 0; }
+.field-check label { margin-bottom: 0; font-weight: 400; }
+
+.field textarea {
+  font: inherit;
+  font-size: var(--text-md);
+  width: 100%;
+  min-height: 4.5rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  max-width: 34rem;
+}
+.inline-form .field { flex: 1; margin-bottom: 0; }
+
+.record-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+.record-list li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.record-list li:last-child { border-bottom: 0; }
+
+/* ---------- 15. Positions & holdings ---------- */
+
+fieldset.field {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--space-4);
+}
+fieldset.field legend {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  padding: 0;
+}
+
+.choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+.choice-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 700px) { .choice-row, .choice-row-3 { grid-template-columns: 1fr; } }
+.choice {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  cursor: pointer;
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+}
+.choice input { width: auto; flex: none; margin-top: 2px; }
+.choice:has(input:checked) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Tracking-mode dependent blocks. Default: both visible (safe fallback for
+   browsers without:has()); a checked radio hides the irrelevant block. The
+   ids are the shared radio_cards scheme: the first card carries the field id,
+   later cards are <id>-<value> (_macros.html). */
+form:has(#tracking_mode:checked) .block-statement { display: none; }
+form:has(#tracking_mode-statement_valued:checked) .block-quantity { display: none; }
+
+.asof-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+}
+.asof-form label { color: var(--color-text-muted); }
+.asof-form .hint { flex-basis:100%; }
+.asof-form input, .asof-form select {
+  font: inherit;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+/* Instrument catalogue views are real GET links: compact enough to scan, and
+   complete without the optional as-of auto-submit enhancement. */
+.catalogue-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+}
+.catalogue-tabs a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+.catalogue-tabs a:hover {
+  background: var(--color-surface-sunk);
+  text-decoration: none;
+}
+.catalogue-tabs a[aria-current="page"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-weight: 600;
+}
+.catalogue-count {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+}
+.catalogue-status {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* One empty-state idiom: standalone states are a narrow card; a section's own
+   empty state inside an existing card drops the chrome (empty_state macro). */
+.empty-state {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+  max-width: 34rem;
+}
+.empty-state > :last-child { margin-bottom: 0; }
+.empty-state-inline {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: var(--space-3);
+}
+
+/* The routine maintenance route has no setup rail. Its source tables use the
+   standard content width, like Holdings; the single-source forms inside keep
+   their own narrower form measures. */
+.values-workspace { max-width: var(--content-max); }
+
+/* One shared date: a compact label/field/button row instead of a stretched
+   filter grid. */
+.routine-date-form {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.routine-date-form .field { margin-bottom: 0; width: 12rem; }
+.routine-date-form .form-actions { margin-top: 0; }
+
+/* Routine source tables reuse the standard data-table look; the entry
+   column stays compact and its input fills it. */
+table.routine-table td:last-child { width: 11rem; }
+table.routine-table input.money-input {
+  font: inherit;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+table.routine-table input[aria-invalid="true"] { border-color: var(--color-danger); }
+
+/* Same-day FX correction stays a quiet inline checkbox under the entry, not a
+   callout box: the latest-source column already shows the saved rate and date.
+   The markup is the shared wt_checkbox shape (values/_routine_session.html). */
+.routine-same-day { margin: var(--space-1) 0 0; }
+.routine-same-day .field-check { gap: var(--space-1); margin-bottom: 0; }
+.routine-same-day label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* Row headers are content (institution, instrument, period), not column
+   labels: drop the uppercase header treatment inside bodies and footers. */
+table.data tbody th[scope="row"],
+table.data tfoot th[scope="row"] {
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+.values-intro {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-5);
+}
+.values-guided-link {
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+}
+
+/* ---------- 16. Activity (Buy/Sell) ---------- */
+
+.activity-switcher { margin-bottom: var(--space-5); }
+.activity-switcher strong { color: var(--color-accent-strong); }
+
+/* Type chooser: large choices, real links. */
+.activity-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  max-width: 44rem;
+}
+@media (max-width: 700px) { .activity-choices { grid-template-columns: 1fr; } }
+.activity-choice {
+  display: block;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+}
+.activity-choice strong {
+  display: block;
+  font-size: var(--text-md);
+  margin-bottom: var(--space-1);
+}
+.activity-choice .hint { display: block; margin-top: 0; }
+a.activity-choice:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  text-decoration: none;
+}
+.activity-choice[aria-disabled="true"] {
+  border-style: dashed;
+  border-color: var(--color-border);
+  background: transparent;
+  color: var(--color-text-faint);
+  cursor: default;
+}
+.activity-choice[aria-disabled="true"] strong { color: var(--color-text-muted); }
+
+/* Live-preview region: unstyled container; content carries the styles.
+   Hidden when empty so the JS-enhanced swap never leaves an empty box. */
+#preview-region:empty { display: none; }
+.preview-note { display: block; margin-top: var(--space-2); }
+
+/* Continuation context (sale-to-replacement): calm accent panel above the
+   trade form, visually distinct from the preview sentence it precedes. */
+.context-panel {
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+  max-width: 34rem;
+}
+.context-panel h2 {
+  font-size: var(--text-md);
+  color: var(--color-accent-strong);
+  margin-bottom: var(--space-2);
+}
+.context-panel .context-proceeds { margin-bottom: var(--space-1); }
+
+/* ---------- 17. Accounts & cash ---------- */
+
+/* Card header: title left, context meta right of it, one baseline. */
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.card-head h2, .card-head h3 { margin-bottom: 0; }
+
+.card-action { margin-bottom: 0; }
+
+/* Key/value breakdown for the confirmation traceability block. */
+dl.kv {
+  display: grid;
+  grid-template-columns: minmax(10rem, auto) 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+dl.kv dt { color: var(--color-text-muted); }
+dl.kv dd { margin: 0; }
+
+.calculated-cash-card { max-width: 34rem; }
+.calculated-cash-card .card-label { margin-bottom: var(--space-1); }
+.calculated-cash-card .headline { margin-top: 0; }
+
+/* ---------- Charts (matching tables remain available) ---------- */
+
+.chart-box {
+  position: relative;
+  height: 220px;
+  max-width: 42rem;
+  margin: 0 0 var(--space-4);
+}
+/* The stacked annual-spending chart reads one bar per year; it needs more
+   vertical room than the single-line ending-capital chart. */
+.chart-box-tall { height: 300px; }
+
+/* ---------- 18. Retirement planning ---------- */
+
+/* Retirement outcome hierarchy: the Core answer leads, then
+   Flexible, then rates and legacy. Hierarchy comes from size and weight
+   only — no good/bad colouring. */
+.outcome-lead { margin-bottom: var(--space-4); max-width: 46rem; }
+.outcome-lead .outcome-state {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.outcome-lead p { margin-bottom: var(--space-1); }
+
+.outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-4);
+}
+.outcome-grid h3 { margin-bottom: var(--space-2); }
+
+/* Fieldset legends carry section weight inside the stacked plan form. */
+form.stack fieldset.stack { margin-bottom: var(--space-5); }
+form.stack fieldset.stack > legend {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  padding: 0;
+}
+
+/* Read-only adopted-plan summary: compact labelled facts; the editing form
+   stays in the disclosure below it. */
+dl.plan-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0 0 var(--space-4);
+}
+dl.plan-summary dt {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+dl.plan-summary dd {
+  margin: 0;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-year evidence: each year is its own disclosure, one closed line tall,
+   so the owner opens only the year being inspected. */
+details.year-detail {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-2) 0;
+}
+details.year-detail:last-of-type { border-bottom: 1px solid var(--color-border); }
+details.year-detail summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+details.year-detail summary .meta { font-weight: 400; }
+details.year-detail[open] summary { margin-bottom: var(--space-2); }
+
+/* ---------- 19. Retirement scenario comparison ---------- */
+
+/* Outcome comparison: on narrow screens the table scrolls inside its wrap
+   instead of wrapping every figure into tall unreadable rows. */
+.comparison-table { min-width: 38rem; }
+.comparison-table th[scope="row"] { min-width: 11rem; }
+
+/* Annual path summaries: entered-return years carry a quiet accent edge plus
+   an explicit "entered return" marker — state never relies on colour alone. */
+.path-table { min-width: 46rem; }
+.path-table tr.entered-year th { box-shadow: inset 3px 0 0 var(--color-accent); }
+
+/* Progressive return-path editor (JavaScript only; the labelled textarea is
+   the complete no-JS path). Rows mirror the four labelled roles; the server
+   remains the only validator and no zero is ever filled in. */
+.return-path-editor { overflow-x: auto; }
+.rp-grid {
+  display: grid;
+  grid-template-columns: auto repeat(4, minmax(5rem, 1fr)) auto;
+  gap: var(--space-1) var(--space-2);
+  align-items: center;
+  min-width: 28rem;
+}
+.rp-grid .rp-head {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+.rp-grid .rp-head .rp-baseline { display: block; font-weight: 400; }
+.rp-year { font-size: var(--text-sm); color: var(--color-text-muted); white-space: nowrap; }
+.return-path-editor input {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+.return-path-editor input[aria-invalid="true"] { border-color: var(--color-danger); }
+.rp-remove {
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+.rp-remove:hover:not(:disabled) { background: var(--color-surface-sunk); }
+.rp-remove:disabled { opacity: 0.5; cursor: default; }
+.rp-add { margin-top: var(--space-2); }
+
+/* Retirement: assumptions, one answer, two paths through time. */
+.retirement-workspace { max-width: 1100px; }
+.retirement-workspace > .lede { max-width: none; }
+.retirement-facts, .retirement-inputs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem 1.5rem; }
+.retirement-facts { grid-template-columns:repeat(4,minmax(0,1fr)); margin:1.2rem 0; }
+.retirement-facts span, .retirement-facts small, .retirement-allowance span { display:block; color:var(--color-text-muted); }
+.retirement-facts strong { display:block; font-size:1.3rem; margin:.25rem 0; }
+.retirement-returns { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.retirement-answer { border-top:3px solid var(--color-accent); }
+.retirement-big { font-size:clamp(2rem,5vw,3.5rem); font-variant-numeric:tabular-nums; line-height:1.25; margin:1.2rem 0; }
+.retirement-big span { font-size:1rem; color:var(--color-text-muted); }
+.retirement-allowance { display:flex; gap:3rem; flex-wrap:wrap; margin:1rem 0; }
+.retirement-allowance strong { display:block; font-size:1.4rem; margin:.3rem 0; font-variant-numeric:tabular-nums; }
+.retirement-save { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; margin-top:1.5rem; }
+.retirement-details { margin:1.5rem 0; }
+.retirement-history { margin-top:2rem; }
+@media(max-width:700px) { .retirement-facts,.retirement-inputs,.retirement-returns { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:440px) { .retirement-inputs,.retirement-returns { grid-template-columns:1fr; } .retirement-facts strong { font-size:1.1rem; } }
+@media print { .retirement-report .table-wrap { overflow:visible; } .retirement-report table { font-size:9px; } .retirement-report .card { break-inside:auto; } .retirement-report tr { break-inside:avoid; } }
+
+.retirement-workspace .chart-box { max-width:none; width:100%; }
+
+.retirement-year-readout { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; margin:1rem 0; }
+.retirement-year-readout span { display:block; color:var(--color-text-muted); }
+.retirement-year-readout strong { display:block; font-size:1.4rem; font-variant-numeric:tabular-nums; margin-top:.3rem; }
+.retirement-year-picker { margin:1rem 0; }
+.retirement-year-picker input { display:block; width:100%; min-height:44px; padding:0; accent-color:var(--color-accent); }
+@media(max-width:600px) { .retirement-year-readout { grid-template-columns:1fr; } }
+
+/* paired Monte Carlo experiment and inspectable local report. */
+#mc-waiting { margin-top:.75rem; }
+.mc-progress { max-width:34rem; height:.65rem; overflow:hidden; border-radius:.3rem; background:var(--color-border); margin:0 0 .75rem; }
+.mc-progress span { display:block; width:0; height:100%; background:var(--color-accent); }
+.mc-workspace .field { max-width:28rem; }
+.mc-allocation .field { margin:0; min-width:8rem; }
+.mc-allocation input { width:100%; max-width:16rem; }
+.mc-allocation { min-width:34rem; }
+.mc-outcomes { min-width:32rem; }
+.mc-frequency { display:block; font:600 1.6rem var(--font-num); margin:.2rem 0; }
+.mc-outcomes td .meta { display:block; }
+.mc-chart-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.5rem; }
+.mc-chart-panel { min-width:0; }
+.mc-chart-panel .chart-box { height:20rem; }
+.mc-readout { font-size:var(--text-sm); font-variant-numeric:tabular-nums; }
+.mc-path-form input { max-width:8rem; }
+.mc-path-form { margin:1rem 0; }
+.mc-report .table-wrap { max-width:100%; }
+.mc-report th .meta { display:block; font-weight:400; }
+.mc-report .num { white-space:nowrap; }
+@media(max-width:750px) { .mc-chart-grid { grid-template-columns:1fr; } }
+@media(max-width:600px) {
+  .mc-allocation, .mc-outcomes { min-width:0; table-layout:fixed; font-size:var(--text-sm); }
+  .mc-allocation th, .mc-allocation td, .mc-outcomes th, .mc-outcomes td { padding:6px 3px; overflow-wrap:anywhere; }
+  .mc-allocation th:first-child { width:26%; }
+  .mc-allocation th:nth-child(2) { width:22%; }
+  .mc-allocation th:nth-child(3) { width:22%; }
+  .mc-allocation th:last-child { width:30%; }
+  .mc-allocation .field { min-width:0; }
+  .mc-allocation .field label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  .mc-allocation input { min-width:0; padding:6px; }
+  .mc-outcomes th:first-child { width:42%; }
+  .mc-frequency { font-size:1.35rem; }
+}
+@media print {
+  .mc-path-form { display:none; }
+  .mc-report .table-wrap { overflow:visible; }
+  .mc-report table { width:100%; min-width:0; font-size:8px; }
+  .mc-report th, .mc-report td { padding:3px; overflow-wrap:anywhere; }
+  .mc-report .num { white-space:normal; }
+  .mc-report details > :not(summary) { display:block; }
+  .mc-report details::details-content { content-visibility:visible; }
+  .mc-report details { break-inside:auto; }
+}
+
+/* Local database entry: the existing palette, with room for a deliberate choice. */
+.database-masthead { max-width: 1080px; margin: auto; padding: 28px 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--color-border); }
+.database-main { max-width: 880px; margin: 0 auto; padding: 60px 32px 40px; }
+.database-entry .flash { overflow-wrap: anywhere; }
+.database-intro { margin-bottom: 32px; max-width: 620px; }
+.database-intro h1 { font-size: 2rem; letter-spacing: -.025em; margin-bottom: 12px; }
+.database-intro > p:last-child { color: var(--color-text-muted); font-size: 1rem; line-height: 1.6; }
+.database-eyebrow { color: var(--color-accent); font-size: var(--text-xs); font-weight: 650; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; }
+.database-list { display: grid; gap: 14px; }
+.database-card { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px; margin: 0; }
+.database-card-copy { min-width: 0; }
+.database-card h2 { margin: 5px 0; overflow-wrap: anywhere; }
+.database-state { font-size: var(--text-xs); color: var(--color-text-muted); }
+.database-filename { font-family: var(--font-num); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.database-card .database-filename { color: var(--color-text-muted); margin-bottom: 4px; }
+.database-card form { flex-shrink: 0; }
+.database-new { margin: 30px 0 36px; padding: 26px 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.database-new h2 { font-size: 1rem; margin-bottom: 6px; }
+.database-new p { margin: 0; }
+.database-new > a { flex-shrink: 0; }
+.database-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; font-size: var(--text-sm); color: var(--color-text-muted); }
+.database-footer details { max-width: 590px; min-width: 0; }
+.database-footer > a { flex-shrink: 0; }
+.database-footer details .stack { padding-top: 16px; }
+.database-back { margin-bottom: 30px; }
+.database-preview { padding: 16px; background: var(--color-surface-sunk); border-radius: var(--radius); }
+.database-upgrade-steps { padding-left: 24px; line-height: 1.9; }
+.header-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.header-identity > .brand { flex-shrink: 0; }
+.header-separator { color: var(--color-text-muted); }
+.dataset-menu { position: relative; min-width: 0; }
+.dataset-menu > summary { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin-left: -4px; border-radius: var(--radius); list-style: none; cursor: pointer; color: var(--color-text-muted); }
+.dataset-menu > summary::-webkit-details-marker { display: none; }
+.dataset-menu > summary:hover, .dataset-menu[open] > summary { background: var(--color-surface-sunk); color: var(--color-text); }
+.dataset-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30vw; }
+.dataset-arrow { font-size: var(--text-xs); }
+.dataset-panel { position: absolute; top: calc(100% + 10px); left: 0; width: 320px; max-width: calc(100vw - 48px); padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); box-shadow: 0 4px 16px rgb(35 33 30 / .12); overflow-wrap: anywhere; }
+.dataset-panel .meta { margin-bottom: 4px; }
+.dataset-portfolio { font-weight: 600; }
+.dataset-panel > a { display: block; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+@media (max-width: 600px) {
+  .form-actions { flex-wrap: wrap; }
+  .database-masthead { padding: 20px; flex-wrap: wrap; }
+  .database-main { padding: 32px 20px; }
+  .database-intro h1 { font-size: 1.75rem; }
+  .database-card, .database-new { align-items: stretch; flex-direction: column; gap: 16px; }
+  .database-card { padding: 20px; }
+  .database-card .btn { width: 100%; }
+  .database-footer { flex-direction: column; }
+  .topbar:has(.dataset-menu) { height: auto; min-height: 3.25rem; padding: 8px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .topbar:has(.dataset-menu) .header-identity { grid-column: 1 / -1; }
+  .topbar:has(.dataset-menu) .spacer { display: none; }
+  .topbar:has(.dataset-menu) .nav-menu { margin-left: 0; justify-self: start; }
+  .dataset-label { max-width: none; }
+  .dataset-menu { position: static; }
+  .dataset-panel { top: calc(100% + 4px); left: 12px; max-width: calc(100vw - 24px); }
+}
+@media print { .dataset-panel { display: none; } }
