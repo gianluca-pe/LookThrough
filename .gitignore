@@ -37,6 +37,9 @@ exports/
 # Local agent configuration and transient browser/test output
 .agents/
 .codex/
+
+# Internal planning, milestone and decision records (local only, never commit)
+internal/
 *.sqlite3-*
 *.sqlite-*
 *.db-*

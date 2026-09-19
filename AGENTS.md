@@ -42,3 +42,6 @@ The current release is v1.0.0-beta.2.
   current documentation. Keep transient progress/history out of this guide.
 - Use generic synthetic examples. Never commit instance/, backups, exports, .venv,
   secrets, screenshots of private data or personal machine paths.
+- internal/ is the local-only workspace for private planning, milestone and decision
+  records. It is gitignored: create such files there, never elsewhere in the repo,
+  and never commit, stage or push internal/ or its contents.
