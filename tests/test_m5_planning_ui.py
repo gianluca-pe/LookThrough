@@ -279,3 +279,53 @@ def test_targets_form_rejects_infeasible_ranges_with_linked_focus(
     body = response.get_data(as_text=True)
     assert "Maximum must be greater than or equal to minimum." in body
     assert 'href="#equity_maximum_percent"' in body
+
+
+def test_fx_update_does_not_hide_targets_for_fully_classified_holdings(app, client):
+    """Account-grouped FX sums must not create phantom classification gaps."""
+    from app.services.fx_reference import ReferenceData, save_set, state_id, validate_rates
+    from app.services.portfolio_summary import build_portfolio_summary
+
+    with app.app_context():
+        portfolio, first = _portfolio_account()
+        second = Account(
+            portfolio_id=portfolio.id, institution_id=first.institution_id,
+            name="Second account", account_type="brokerage",
+            default_currency_code="USD", is_multicurrency=False,
+            cash_tracking_mode="separate_cash", portfolio_share_decimal=Decimal("1"),
+            present_access_decimal=Decimal("1"), is_active=True,
+        )
+        first.default_currency_code = "USD"
+        db.session.add(second)
+        db.session.flush()
+        for account, amount, cash in [(first, "21", "400"), (second, "600", "33")]:
+            instrument = _classified_statement_position(
+                portfolio, account, amount=amount, role="equity", bucket="growth"
+            )
+            instrument.valuation_currency_code = "USD"
+            db.session.flush()
+            observation = db.session.query(ValuationObservation).join(PositionRegistration).filter(
+                PositionRegistration.instrument_id == instrument.id
+            ).one()
+            observation.currency_code = "USD"
+            db.session.add(CashBalanceCheckpoint(
+                account_id=account.id, currency_code="USD", effective_date=AS_OF,
+                confirmed_balance_amount=Decimal(cash),
+            ))
+        save_allocation_targets(portfolio.id, TARGETS)
+        db.session.commit()
+        for rate in ["1", "1.17"]:
+            save_set(
+                ReferenceData(AS_OF, validate_rates({"EUR": "1", "USD": rate})),
+                source="manual", note="Synthetic FX update", expected_state=state_id(),
+                replace=True, acknowledge=True,
+            )
+            summary = build_portfolio_summary(portfolio, AS_OF)
+            assert summary["role_unclassified_investment_amount"] == 0
+            assert summary["role_unclassified_accessible_investment_amount"] == 0
+            assert summary["bucket_unclassified_investment_amount"] == 0
+            assert summary["bucket_unclassified_accessible_investment_amount"] == 0
+            assert summary["allocation_target_calculation_complete"]
+            body = client.get("/overview").get_data(as_text=True)
+            assert 'data-target-min="[70.0, 0.0, 10.0, 0.0]"' in body
+            assert "Comparison to your target ranges is withheld" not in body

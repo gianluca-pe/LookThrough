@@ -295,9 +295,6 @@ def _reporting_breakdown(
 def _allocation_summary(
     holdings: list[dict[str, object]],
     cash_balances: list[dict[str, object]],
-    *,
-    included_reporting_total: Decimal,
-    accessible_reporting_total: Decimal,
 ) -> dict[str, object]:
     """Allocate included values without hiding unclassified amounts."""
 
@@ -311,6 +308,10 @@ def _allocation_summary(
     bucket_classified_investment = Decimal("0")
     bucket_classified_accessible_investment = Decimal("0")
 
+    unclassified_investment = Decimal("0")
+    unclassified_accessible_investment = Decimal("0")
+    unbucketed_investment = Decimal("0")
+    unbucketed_accessible_investment = Decimal("0")
     classification_gaps: dict[int, dict[str, object]] = {}
     for holding in holdings:
         included = holding["included_reporting_amount"]
@@ -327,11 +328,17 @@ def _allocation_summary(
                     weight = role["weight_decimal"]
                     role_included[code] += included * weight
                     role_accessible[code] += accessible * weight
+            else:
+                unclassified_investment += included
+                unclassified_accessible_investment += accessible
             if fire_bucket_code:
                 bucket_classified_investment += included
                 bucket_classified_accessible_investment += accessible
                 bucket_included[fire_bucket_code] += included
                 bucket_accessible[fire_bucket_code] += accessible
+            else:
+                unbucketed_investment += included
+                unbucketed_accessible_investment += accessible
             if included != 0 and (not role_weights or not fire_bucket_code):
                 instrument_id = holding["instrument_id"]
                 gap = classification_gaps.setdefault(
@@ -372,21 +379,8 @@ def _allocation_summary(
     )
     bucket_denominator = bucket_classified_investment
     bucket_accessible_denominator = bucket_classified_accessible_investment
-    # Reconcile gap amounts to the portfolio's canonical included/access totals.
-    # Summing the same high-precision Decimals in a different account/holding order
-    # can otherwise leave a harmless but visible 1E-22 residual.
-    unclassified_investment = included_reporting_total - role_denominator
-    unclassified_accessible_investment = (
-        accessible_reporting_total - role_accessible_denominator
-    )
-    unbucketed_investment = (
-        included_reporting_total - bucket_denominator - cash_included
-    )
-    unbucketed_accessible_investment = (
-        accessible_reporting_total
-        - bucket_accessible_denominator
-        - cash_accessible
-    )
+    # Count unclassified sources directly. Subtracting differently grouped FX
+    # totals can leave a Decimal residual and falsely withhold target comparisons.
 
     role_rows = [
         {
@@ -1030,8 +1024,6 @@ def build_portfolio_summary(
     allocation = _allocation_summary(
         holdings,
         cash_balances,
-        included_reporting_total=included_reporting_total,
-        accessible_reporting_total=accessible_reporting_total,
     )
     target_comparison = compare_allocation_to_targets(
         portfolio.id,
