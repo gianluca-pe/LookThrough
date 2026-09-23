@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from flask import Flask, template_rendered
+from flask import Flask
 from flask.testing import FlaskClient
 
 from app.extensions import db
@@ -536,62 +536,16 @@ def test_incomplete_sources_withhold_all_annual_results(app: Flask) -> None:
         assert any(row["kind"] == "incomplete_sources" for row in projection["reasons"])
 
 
-def test_retirement_route_has_no_defaults_and_round_trips_assumptions(
-    app: Flask, client: FlaskClient
-) -> None:
+def test_retired_projection_form_preserves_stored_assumptions(app, client):
     with app.app_context():
         portfolio, account = _portfolio_account(spending="30000", inflation="0.03")
         _cash(account, "1000000")
+        _assumptions(portfolio, current=50, withdrawal=55, final=60)
         db.session.commit()
-
-    page = client.get("/planning/retirement")
-    assert page.status_code == 200
-    assert "Enter and save the ages" in page.get_data(as_text=True)
-
-    invalid = client.post(
-        "/planning/retirement",
-        data={
-            "current_age_years": "50",
-            "withdrawal_start_age_years": "50",
-            "final_age_years": "90",
-            "equity_return_percent": "6",
-            "income_return_percent": "3",
-            "liquidity_return_percent": "1",
-            "alternatives_return_percent": "4",
-        },
-    )
-    body = invalid.get_data(as_text=True)
-    assert "Withdrawal-start age must be greater" in body
-    assert 'href="#withdrawal_start_age_years"' in body
-    assert "autofocus" in body
-
-    saved = client.post(
-        "/planning/retirement",
-        data={
-            "current_age_years": "50",
-            "withdrawal_start_age_years": "55",
-            "final_age_years": "90",
-            "equity_return_percent": "6",
-            "income_return_percent": "3",
-            "liquidity_return_percent": "1",
-            "alternatives_return_percent": "4",
-            "terminal_legacy_target_amount": "500000",
-        },
-        follow_redirects=True,
-    )
-    assert saved.status_code == 200
-    body = saved.get_data(as_text=True)
-    assert "Retirement projection assumptions saved" in body
-    assert "Value at age 90" in body
-    assert "Inspect withdrawal sources" in body
+        before = db.session.query(RetirementAssumption).one().current_age_years
+    page = client.get("/planning/retirement?as_of=2026-08-30")
+    assert page.location == "/retirement?as_of=2026-08-30"
+    response = client.post("/planning/retirement", data={"current_age_years": "70"}, follow_redirects=True)
+    assert b"No changes were saved" in response.data
     with app.app_context():
-        row = db.session.query(RetirementAssumption).one()
-        assert row.equity_return_decimal == Decimal("0.06000000")
-        assert row.terminal_legacy_target_amount == Decimal("500000")
-
-    rendered = []
-    with template_rendered.connected_to(
-        lambda sender, template, context, **extra: rendered.append(context), app
-    ):
-        client.get("/planning/retirement")
-    assert rendered[0]["projection"]["calculation_complete"] is True
+        assert db.session.query(RetirementAssumption).one().current_age_years == before

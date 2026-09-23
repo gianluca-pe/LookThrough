@@ -75,7 +75,12 @@ def budget():
     if portfolio is None:
         return redirect(url_for("setup.show"))
     plan = adopted_plan(portfolio.id)
-    if plan and plan.planning_mode == "affordability":
+    if plan is None:
+        if request.method == "POST":
+            flash("No changes were saved. Use Retirement to review and save your plan.", "warning")
+        return redirect(url_for("retirement.index", as_of=request.args.get("as_of")),
+                        code=303 if request.method == "POST" else 302)
+    if plan.planning_mode == "affordability":
         flash("Your plan now uses the affordability simulator. Saved return comparisons remain available.", "success")
         return redirect(url_for("retirement.index"))
     as_of_date, as_of_error = _as_of_date(portfolio)

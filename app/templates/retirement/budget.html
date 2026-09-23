@@ -8,7 +8,7 @@
 {% endif %}{% endblock %}
 {% block content %}
 <p class="lede">Plan the Core lifestyle you want to maintain and the Flexible spending that can adapt. Results follow your assumptions and the dated portfolio.</p>
-<p class="small"><a href="{{ url_for('retirement.scenarios', as_of=as_of_date.isoformat()) }}">Compare return scenarios</a> · <a href="{{ url_for('planning.targets') }}">Allocation targets</a>{% if not plan %} · <a href="{{ url_for('planning.retirement') }}">Existing retirement projection</a> · <a href="{{ url_for('planning.funding_assumptions') }}">Existing funding assumptions</a>{% endif %}</p>
+<p class="small"><a href="{{ url_for('retirement.scenarios', as_of=as_of_date.isoformat()) }}">Compare return scenarios</a> · <a href="{{ url_for('planning.targets') }}">Allocation targets</a> · <a href="{{ url_for('retirement.index') }}">Current Retirement planner</a></p>
 <form method="get" class="routine-date-form" novalidate>
   <input type="hidden" name="path" value="{{ selected_path }}">
   <div class="field"><label for="retirement-as-of">Portfolio as of</label>

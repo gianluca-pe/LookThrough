@@ -12,7 +12,6 @@
     <div><dt>Default reporting currency</dt><dd>{{ portfolio.reporting_currency_code }}</dd></div>
     {% if retirement_plan %}<div><dt>Spending and inflation</dt><dd>Managed by the adopted <a href="{{ url_for('retirement.index') }}">Retirement plan</a>.</dd></div>{% else %}
     <div><dt>Annual spending</dt><dd>{% if portfolio.annual_spending_amount is not none %}{{ money({"amount": portfolio.annual_spending_amount, "currency": portfolio.annual_spending_currency_code}) }}{% else %}{{ money_missing("not set") }}{% endif %}</dd></div>
-    <div><dt>Annual inflation assumption</dt><dd>{% if portfolio.annual_inflation_decimal is not none %}{{ portfolio.annual_inflation_decimal|percentage_amount(2) }}%{% else %}{{ money_missing("not set") }}{% endif %}</dd></div>
     {% endif %}
   </dl>
   <p class="form-actions">

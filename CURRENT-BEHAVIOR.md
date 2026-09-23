@@ -77,11 +77,8 @@ labels must not reinterpret those records accidentally.
 
 Allocation targets are user-entered. Edit target ranges is available in Overview’s
 Asset allocation card and Settings’ Portfolio settings section; both links retain
-the selected database. Target comparisons and chart bands are withheld
-when included values are missing or unclassified. Unclassified role and bucket
-amounts are summed directly from holdings lacking those classifications; tiny
-Decimal remainders from differently grouped FX totals do not count as missing
-classification. This calculation fix requires no stored-data migration.
+the selected database. Target comparisons and chart bands are withheld when
+included values are missing or unclassified.
 
 Overview's ten-year reserve assessment compares
 Now with three years of Core and Bridge with seven years of Core, held constant in
@@ -97,6 +94,13 @@ reserves. Percentage charts use the same positive eligible starting capital as t
 reserve service, including Growth. Unknown/zero denominators withhold percentages.
 
 ## Deterministic retirement
+
+Retirement is the current planner and the place to set planning inflation.
+Settings does not display the older standalone inflation assumption. The former
+funding-assumptions and projection URLs redirect to Retirement; submissions to
+those retired forms do not change saved data. Existing budget-style plans expose
+View existing budget plan from Retirement, while new and affordability plans use
+the current planner. Stored historical assumptions remain preserved.
 
 The planner solves a steady annual real Flexible allowance alongside entered Core
 spending, returns, inflation, working-year net savings, dated retirement income,

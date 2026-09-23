@@ -399,9 +399,7 @@
         {% else %}Annual spending FX{% endif %}
         <span class="meta"> · {{ item.detail }}</span>
       </span>
-      {% if item.action_kind == "set_funding_assumptions" %}
-      <a href="{{ url_for('planning.funding_assumptions') }}">Set assumptions →</a>
-      {% elif item.base_currency %}
+      {% if item.base_currency %}
       <a href="{{ values_update_url("fx", base_currency=item.base_currency, quote_currency=item.quote_currency) }}">Update →</a>
       {% else %}
       <a href="{{ url_for('setup.show', step='portfolio') }}">Portfolio details →</a>

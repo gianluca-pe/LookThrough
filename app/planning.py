@@ -1,4 +1,4 @@
-"""Allocation target maintenance routes."""
+"""Allocation targets and compatibility redirects for retired planning pages."""
 
 from __future__ import annotations
 
@@ -12,26 +12,13 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 
 from app.extensions import db
 from app.conventions import parse_iso_date
-from app.planning_forms import (
-    AllocationTargetsForm,
-    FundingAssumptionsForm,
-    RetirementProjectionForm,
-)
+from app.planning_forms import AllocationTargetsForm
 from app.services.planning import (
     PlanningValidationError,
     allocation_targets,
-    save_annual_inflation,
     save_allocation_targets,
 )
 from app.setup import _current_portfolio
-from app.services.portfolio_summary import build_portfolio_summary
-from app.services.retirement_plans import adopted_plan
-from app.services.retirement import (
-    RetirementValidationError,
-    build_retirement_projection,
-    retirement_assumption,
-    save_retirement_assumption,
-)
 
 
 planning_blueprint = Blueprint("planning", __name__)
@@ -87,35 +74,17 @@ def targets() -> str:
 
 @planning_blueprint.route("/planning/funding", methods=["GET", "POST"])
 def funding_assumptions() -> str:
-    portfolio = _current_portfolio()
-    if portfolio is None:
+    return _retired_planning_page()
+
+
+def _retired_planning_page():
+    if _current_portfolio() is None:
         return redirect(url_for("setup.show"))
-    if adopted_plan(portfolio.id):
-        return redirect(url_for("retirement.index"))
-    form = FundingAssumptionsForm()
-    if not form.is_submitted() and portfolio.annual_inflation_decimal is not None:
-        form.annual_inflation_percent.data = (
-            portfolio.annual_inflation_decimal * Decimal("100")
-        )
-    if form.validate_on_submit():
-        try:
-            save_annual_inflation(
-                portfolio.id,
-                form.annual_inflation_percent.data / Decimal("100"),
-            )
-        except PlanningValidationError as exc:
-            db.session.rollback()
-            field = getattr(form, exc.field, form.annual_inflation_percent)
-            field.errors.append(str(exc))
-        else:
-            db.session.commit()
-            flash("Funding assumptions saved.", "success")
-            return redirect(url_for("planning.funding_assumptions"))
-    return render_template(
-        "planning/funding.html",
-        form=form,
-        portfolio=portfolio,
-        portfolio_name=portfolio.name,
+    if request.method == "POST":
+        flash("This older form has been retired. No changes were saved. Use Retirement to review and save your plan.", "warning")
+    return redirect(
+        url_for("retirement.index", as_of=request.args.get("as_of")),
+        code=303 if request.method == "POST" else 302,
     )
 
 
@@ -141,65 +110,4 @@ def _projection_chart(projection) -> dict[str, object] | None:
 
 @planning_blueprint.route("/planning/retirement", methods=["GET", "POST"])
 def retirement() -> str:
-    portfolio = _current_portfolio()
-    if portfolio is None:
-        return redirect(url_for("setup.show"))
-    if adopted_plan(portfolio.id):
-        return redirect(url_for("retirement.index", as_of=request.args.get("as_of")))
-    as_of_date, as_of_error = _as_of_date(portfolio)
-    form = RetirementProjectionForm()
-    existing = retirement_assumption(portfolio.id)
-    if not form.is_submitted() and existing is not None:
-        form.current_age_years.data = existing.current_age_years
-        form.withdrawal_start_age_years.data = existing.withdrawal_start_age_years
-        form.final_age_years.data = existing.final_age_years
-        for role in ("equity", "income", "liquidity", "alternatives"):
-            getattr(form, f"{role}_return_percent").data = (
-                getattr(existing, f"{role}_return_decimal") * Decimal("100")
-            )
-        form.terminal_legacy_target_amount.data = (
-            existing.terminal_legacy_target_amount
-        )
-    if form.validate_on_submit():
-        try:
-            save_retirement_assumption(
-                portfolio.id,
-                current_age_years=form.current_age_years.data,
-                withdrawal_start_age_years=(
-                    form.withdrawal_start_age_years.data
-                ),
-                final_age_years=form.final_age_years.data,
-                role_returns=form.role_returns_decimal(),
-                terminal_legacy_target_amount=(
-                    form.terminal_legacy_target_amount.data
-                ),
-            )
-        except RetirementValidationError as error:
-            db.session.rollback()
-            getattr(form, error.field, form.current_age_years).errors.append(
-                error.message
-            )
-        else:
-            db.session.commit()
-            flash("Retirement projection assumptions saved.", "success")
-            return redirect(
-                url_for("planning.retirement", as_of=as_of_date.isoformat())
-            )
-    summary = build_portfolio_summary(portfolio, as_of_date)
-    projection = build_retirement_projection(
-        portfolio,
-        summary,
-        as_of_date,
-        reporting_currency=portfolio.reporting_currency_code,
-    )
-    return render_template(
-        "planning/retirement.html",
-        form=form,
-        portfolio=portfolio,
-        summary=summary,
-        projection=projection,
-        projection_chart=_projection_chart(projection),
-        as_of_date=as_of_date,
-        as_of_error=as_of_error,
-        portfolio_name=portfolio.name,
-    )
+    return _retired_planning_page()

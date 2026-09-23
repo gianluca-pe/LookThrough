@@ -246,16 +246,17 @@ def test_no_js_review_adoption_and_input_recovery(app, client):
         portfolio, account = _portfolio_account()
         _cash(account, "1000")
         _position(portfolio, account, name="Fund", amount="100", bucket="growth", roles={"equity": "1"})
+        save_plan(portfolio.id, plan_data(), confirmed=True)
         db.session.commit()
         portfolio_id = portfolio.id
     response = client.get("/retirement/budget")
     assert response.status_code == 200
-    assert b"Existing retirement projection" in response.data
+    assert b"Current Retirement planner" in response.data
     data = post_data()
     preview = client.post("/retirement/budget", data={**data, "preview_plan": "1"})
     assert preview.status_code == 200 and b"Review adoption" in preview.data
     with app.app_context():
-        assert adopted_plan(portfolio_id) is None
+        assert adopted_plan(portfolio_id).core_amount == D("60")
     invalid = client.post("/retirement/budget", data={**data, "core_amount": "bad", "confirm_adoption": "y", "save_projection": "1"})
     assert b'value="bad"' in invalid.data and b'aria-invalid="true"' in invalid.data
     import re
@@ -302,6 +303,12 @@ def test_unconfirmed_adoption_preserves_plan_and_focuses_confirmation(app, clien
         portfolio_id = portfolio.id
     data = {**post_data(core_amount=D("123")), "save_projection": "1"}
     response = client.post("/retirement/budget", data=data)
+    if not already_adopted:
+        assert response.status_code == 303
+        assert response.location == "/retirement"
+        with app.app_context():
+            assert adopted_plan(portfolio_id) is None
+        return
     html = response.get_data(as_text=True)
     assert response.status_code == 200
     assert "Confirm that Retirement and Overview should use this plan before adopting it." in html
@@ -413,7 +420,7 @@ def test_long_horizon_demo_states_render(app, client, state):
         if state == "funded":
             portfolio = db.session.scalar(select(Portfolio))
             assert project(portfolio)["lifestyle"]["core_funded_all_years"] is True
-    assert client.get("/retirement/budget").status_code == 200
+    assert client.get("/retirement/budget").status_code == (302 if state == "legacy" else 200)
 
 
 def test_full_mixed_sale_leaves_exact_zero():

@@ -354,44 +354,17 @@ def test_expected_cash_account_without_source_makes_known_result_partial(
         assert funding["periods"][0]["is_funded"] is True
 
 
-def test_funding_assumption_form_round_trips_and_validates(
-    app: Flask, client: FlaskClient
-) -> None:
+def test_retired_funding_form_preserves_stored_inflation(app, client):
     with app.app_context():
-        portfolio, _ = _portfolio_account(inflation=None)
+        portfolio, _ = _portfolio_account(inflation="0.03")
         portfolio_id = portfolio.id
         db.session.commit()
-
-    page = client.get("/planning/funding")
-    assert page.status_code == 200
-    assert "No default is assumed" in page.get_data(as_text=True)
-    saved = client.post(
-        "/planning/funding",
-        data={
-            "annual_inflation_percent": "3",
-            "save_assumptions": "Save funding assumptions",
-        },
-        follow_redirects=True,
-    )
-    assert "Funding assumptions saved" in saved.get_data(as_text=True)
+    assert client.get("/planning/funding").location == "/retirement"
+    response = client.post("/planning/funding", data={"annual_inflation_percent": "5"})
+    assert response.status_code == 303
+    assert response.location == "/retirement"
     with app.app_context():
-        assert (
-            db.session.get(Portfolio, portfolio_id).annual_inflation_decimal
-            == Decimal("0.03000000")
-        )
-
-    invalid = client.post(
-        "/planning/funding",
-        data={
-            "annual_inflation_percent": "-1",
-            "save_assumptions": "Save funding assumptions",
-        },
-    )
-    body = invalid.get_data(as_text=True)
-    assert invalid.status_code == 200
-    assert 'href="#annual_inflation_percent"' in body
-    assert 'id="annual_inflation_percent"' in body
-    assert "autofocus" in body
+        assert db.session.get(Portfolio, portfolio_id).annual_inflation_decimal == Decimal("0.03")
 
 
 def test_overview_exposes_shared_funding_contract(app: Flask, client: FlaskClient) -> None:

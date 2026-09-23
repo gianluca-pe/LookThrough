@@ -78,9 +78,7 @@ def test_surplus_demo_funds_full_budget_to_exact_zero_but_rules_leave_unwanted_l
 
 def test_full_budget_choice_needs_no_rule_numbers_and_still_limits_resources(app, client):
     with app.app_context():
-        portfolio, account = _portfolio_account()
-        _cash(account, "0")
-        db.session.commit()
+        portfolio, account, _ = seed("0", spending_policy="full_budget", **dict.fromkeys(RULE_FIELDS))
         portfolio_id = portfolio.id
     fields = {**dict.fromkeys(RULE_FIELDS), "spending_policy": "full_budget"}
     data = {**post_data(**fields), "save_projection": "1", "confirm_adoption": "y"}

@@ -6,6 +6,9 @@
 {% block content %}
 <div class="retirement-workspace">
 <p class="lede">Under your assumptions, from where you stand today — see the lifestyle your portfolio can support. Revisit as life and balances change.</p>
+{% if plan and plan.planning_mode == 'budget' %}
+<p><a href="{{ url_for('retirement.budget', as_of=form.base_date.data.isoformat() if form.base_date.data else none) }}">View existing budget plan</a></p>
+{% endif %}
 <section class="card retirement-assumptions" aria-labelledby="assumptions-heading">
 <h2 id="assumptions-heading">Assumptions in this projection</h2>
 {% if result %}
