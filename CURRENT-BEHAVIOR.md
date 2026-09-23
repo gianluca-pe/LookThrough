@@ -75,7 +75,9 @@ contribute to net worth/allocation but are excluded from retirement funding. Leg
 stored role/bucket mappings are implemented in the classification service; changing
 labels must not reinterpret those records accidentally.
 
-Allocation targets are user-entered. Target comparisons and chart bands are withheld
+Allocation targets are user-entered. Edit target ranges is available in Overview’s
+Asset allocation card and Settings’ Portfolio settings section; both links retain
+the selected database. Target comparisons and chart bands are withheld
 when included values are missing or unclassified. Unclassified role and bucket
 amounts are summed directly from holdings lacking those classifications; tiny
 Decimal remainders from differently grouped FX totals do not count as missing

@@ -205,7 +205,7 @@ def test_overview_links_to_targets_when_none_set(
     assert "Target range" not in body
     assert "data-target-min" not in body  # no invented bands without targets
     assert 'data-chart="allocation"' in body
-    assert "Set target ranges →" in body
+    assert "Edit target ranges" in body
     assert 'href="/planning/targets"' in body
 
 

@@ -67,7 +67,10 @@
 
 {% if summary.role_classified_denominator_amount or summary.role_unclassified_investment_amount %}
 <section class="card" aria-labelledby="role-allocation-heading">
-  <h2 id="role-allocation-heading">Asset allocation</h2>
+  <div class="card-head">
+    <h2 id="role-allocation-heading">Asset allocation</h2>
+    <a href="{{ url_for('planning.targets') }}">Edit target ranges</a>
+  </div>
   {% if summary.role_classified_denominator_amount %}
   {% if allocation_chart %}
   <div class="chart-box" data-chart="allocation"
@@ -134,7 +137,7 @@
   {% elif summary.allocation_targets_complete %}
   <p class="meta">Comparison to your target ranges is withheld while some included value is unclassified or unvalued — no result is invented from partial data.</p>
   {% else %}
-  <p class="meta">No allocation target ranges set. <a href="{{ url_for('planning.targets') }}">Set target ranges →</a> They live with Portfolio details in Settings, so Overview links there instead of embedding another form.</p>
+  <p class="meta">No allocation target ranges set. Use Edit target ranges to enter your acceptable range for each role.</p>
   {% endif %}
   {% if summary.role_unclassified_investment_amount %}
   <p class="meta"><strong>Unclassified:</strong>
