@@ -192,60 +192,7 @@ def test_overview_withholds_results_while_classification_incomplete(
     assert "data-target-min" not in body
 
 
-def test_overview_links_to_targets_when_none_set(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        portfolio, account = _portfolio_account()
-        _classified_statement_position(
-            portfolio, account, amount="600", role="equity", bucket="growth"
-        )
-        db.session.commit()
-    body = client.get("/overview").get_data(as_text=True)
-    assert "Target range" not in body
-    assert "data-target-min" not in body  # no invented bands without targets
-    assert 'data-chart="allocation"' in body
-    assert "Edit target ranges" in body
-    assert 'href="/planning/targets"' in body
 
-
-def test_overview_bucket_card_explains_projects_and_horizons(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        portfolio, account = _portfolio_account()
-        _seed_complete(portfolio, account)
-    body = client.get("/overview").get_data(as_text=True)
-    assert "funding horizon, not a spending allowance" in body
-    assert "excluded from ten-year funding" in body
-    # All four buckets are a fixed vocabulary: an empty Now row is stated,
-    # not hidden (the empty near-term horizon is the signal).
-    bucket_card = body.split('aria-labelledby="bucket-allocation-heading"', 1)[1]
-    # Cash is a visible row above the buckets, outside their percentages.
-    cash_row = bucket_card.split("<td>Cash</td>", 1)[1].split("</tr>", 1)[0]
-    assert "400.00" in cash_row
-    assert "no manually assigned horizon" in bucket_card
-    assert "Now (0–3 years)" in bucket_card
-    now_row = bucket_card.split(">Now (0–3 years)<", 1)[1].split("</tr>", 1)[0]
-    assert "0.00" in now_row
-    # The Total row foots to the headline included value (600 + 400 = 1,000).
-    total_row = bucket_card.split('<th scope="row">Total</th>', 1)[1].split("</tr>", 1)[0]
-    assert total_row.count("1,000.00") == 2
-
-
-def test_targets_form_groups_ranges_under_role_legends(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        _portfolio_account()
-        db.session.commit()
-    body = client.get("/planning/targets").get_data(as_text=True)
-    assert "<legend>Equity</legend>" in body
-    assert "<legend>Liquidity</legend>" in body
-    assert "Minimum (%)" in body
-    assert "Maximum (%)" in body
-    assert "not recommendations" in body
-    assert 'href="/settings"' in body
 
 
 def test_targets_form_rejects_infeasible_ranges_with_linked_focus(

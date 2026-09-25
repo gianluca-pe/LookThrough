@@ -54,6 +54,13 @@ Choose checks that cover the changed behavior. Schema work also needs historical
 migration/backup coverage; frontend work needs a real browser where behavior or
 layout matters. Use disposable databases and exact Decimal expectations.
 
+Prefer browser E2E checks for complex behavior. Keep an isolated test only when it
+detects a material failure the browser checks cannot observe, such as an exact
+calculation, atomic rollback or historical migration. Define its failure cases
+before implementation. For each E2E run, retain a repeatable verification record:
+the synthetic fixture and commands, assertion output, and any useful screenshots or
+exports. Keep generated artifacts outside the repository and exclude private data.
+
 ## Browser fixtures
 
 The existing scripts use Node.js with built-in fetch/WebSocket (Node 22+), and

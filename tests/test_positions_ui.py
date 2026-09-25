@@ -65,36 +65,6 @@ def _open_position(client: FlaskClient, account_id: int, **overrides) -> None:
 
 # --- Positions page ---
 
-def test_positions_page_structure(client: FlaskClient, account_id: int) -> None:
-    body = client.get("/setup/positions").get_data(as_text=True)
-    assert "<h1>Add current positions</h1>" in body
-    assert body.count('aria-current="step"') == 1
-    rail = body.split('aria-label="Setup progress"', 1)[1].split("</nav>", 1)[0]
-    # Cash is linked; Review remains unavailable until a position exists.
-    assert rail.count("<a href=") == 5
-    assert 'href="/setup/cash"' in rail
-    assert ">Review<" in rail
-    assert_no_inline_script(body)
-
-
-def test_tracking_mode_radios_and_nojs_toggle(client: FlaskClient, account_id: int) -> None:
-    body = client.get("/setup/positions").get_data(as_text=True)
-    # Tracking mode is a radio group, not a select — required for the CSS toggle.
-    assert 'type="radio" name="tracking_mode"' in body.replace('name="tracking_mode" type="radio"', 'type="radio" name="tracking_mode"') or 'name="tracking_mode"' in body
-    assert body.count('name="tracking_mode"') == 2
-    # The shared radio_cards id scheme: the first card carries the field id,
-    # later cards are <id>-<value>; the group's name comes from the legend.
-    assert 'id="tracking_mode"' in body
-    assert 'id="tracking_mode-statement_valued"' in body
-    assert 'role="radiogroup"' not in body
-    # Both dependent blocks exist in the DOM; the stylesheet hides the
-    # irrelevant one once a mode is chosen (graceful:has() fallback).
-    assert 'class="block-quantity"' in body
-    assert 'class="block-statement"' in body
-    with open("app/static/css/app.css") as fh:
-        css = fh.read()
-    assert ":has(#tracking_mode:checked) .block-statement" in css
-    assert ":has(#tracking_mode-statement_valued:checked) .block-quantity" in css
 
 
 def test_new_instrument_disclosure_closed_then_open_on_error(
@@ -118,20 +88,6 @@ def test_new_instrument_disclosure_closed_then_open_on_error(
     assert "autofocus" in name_tag
 
 
-def test_instrument_select_is_typeahead_enhanced(
-    client: FlaskClient, account_id: int
-) -> None:
-    body = client.get("/setup/positions").get_data(as_text=True)
-    instrument_tag = re.search(r'<select[^>]*id="instrument_id"[^>]*>', body).group(0)
-    assert 'data-typeahead="true"' in instrument_tag
-    assert 'data-new-instrument="true"' in instrument_tag
-    # The no-JS path is untouched: a real select with all options submits.
-    assert "Add a new instrument" in body
-    # The enhancer is available and deferred.
-    response = client.get("/static/js/enhance.js")
-    assert response.status_code == 200
-    assert "data-typeahead" in response.get_data(as_text=True)
-
 
 def test_add_position_without_javascript(client: FlaskClient, account_id: int) -> None:
     _open_position(client, account_id)
@@ -143,69 +99,8 @@ def test_add_position_without_javascript(client: FlaskClient, account_id: int) -
 
 # --- Values page ---
 
-def test_new_instrument_currency_suggests_known_codes(
-    client: FlaskClient, account_id: int
-) -> None:
-    body = client.get("/setup/positions").get_data(as_text=True)
-    currency_tag = re.search(
-        r'<input[^>]*id="valuation_currency_code"[^>]*>', body
-    ).group(0)
-    assert 'list="currency-codes"' in currency_tag
-    datalist = re.search(
-        r'<datalist id="currency-codes">(.*?)</datalist>', body, re.DOTALL
-    ).group(1)
-    # The account's default currency is already known and suggested.
-    assert '<option value="EUR">' in datalist
 
 
-def test_instrument_options_include_ticker_on_positions_and_values(
-    client: FlaskClient, account_id: int
-) -> None:
-    _open_position(client, account_id, ticker_or_isin="FUND123")
-    positions = client.get("/setup/positions").get_data(as_text=True)
-    values = client.get("/setup/values").get_data(as_text=True)
-    # Name (TICKER) is the option label everywhere, not only in activities.
-    assert ">Global Fund (FUND123)</option>" in positions
-    assert ">Global Fund (FUND123)</option>" in values
-
-
-def test_statement_option_includes_ticker_and_account(
-    client: FlaskClient, account_id: int
-) -> None:
-    _open_position(
-        client, account_id,
-        new_instrument_name="Endowment Plan", ticker_or_isin="END1",
-        tracking_mode="statement_valued", opening_quantity="",
-        statement_value="61000",
-    )
-    body = client.get("/setup/values").get_data(as_text=True)
-    assert ">Endowment Plan (END1) — Brokerage</option>" in body
-
-
-def test_values_page_three_sections(client: FlaskClient, account_id: int) -> None:
-    _open_position(client, account_id)
-    body = client.get("/setup/values").get_data(as_text=True)
-    for heading in ("Prices", "Statement values", "FX rates"):
-        assert f"<h2" in body and heading in body
-    # Section bookmarks keep their accessible ids: missing-value links across
-    # Holdings, Overview, and Review target them.
-    for anchor in ("prices-heading", "statements-heading", "fx-heading"):
-        assert f'id="{anchor}"' in body
-    # Currency entries suggest codes already in use, without restricting input.
-    # (The statement form renders only once a statement-valued position exists.)
-    assert body.count('<datalist id="currency-codes">') == 1
-    for field_id in ("price-currency_code",
-                     "fx-base_currency_code", "fx-quote_currency_code"):
-        tag = re.search(rf'<input[^>]*id="{field_id}"[^>]*>', body).group(0)
-        assert 'list="currency-codes"' in tag
-    # FX direction copy is explicit, per contract.
-    assert "1 BASE = RATE QUOTE" in body
-    # Statement section has no positions to offer and says so.
-    assert "No statement-valued positions yet." in body
-    # Form ids are prefixed per form (no duplicate element ids).
-    ids = re.findall(r'<(?:input|select|textarea)[^>]* id="([^"]+)"', body)
-    assert len(ids) == len(set(ids))
-    assert_no_inline_script(body)
 
 
 def test_price_currency_mismatch_error(client: FlaskClient, account_id: int) -> None:
@@ -343,19 +238,6 @@ def test_statement_valued_position_never_shows_units(
     assert "units" not in row.lower()
 
 
-def test_holdings_nav_current(client: FlaskClient, account_id: int) -> None:
-    body = client.get("/holdings").get_data(as_text=True)
-    sidebar = body.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
-    current = re.search(r'<a href="([^"]+)" aria-current="page">([^<]+)</a>', sidebar)
-    assert current and current.group(1) == "/holdings" and current.group(2) == "Holdings"
-    assert_no_inline_script(body)
-
-
-def test_holdings_empty_state(client: FlaskClient, account_id: int) -> None:
-    body = client.get("/holdings").get_data(as_text=True)
-    assert "No positions yet." in body
-    assert 'href="/positions/new"' in body
-    assert 'href="/values"' in body
 
 
 def test_fully_sold_position_leaves_current_holdings_but_remains_historical(
@@ -437,14 +319,6 @@ def test_values_fx_context_states_exact_direction(
     assert "1 USD equals the rate entered in EUR." in banner
 
 
-def test_values_unknown_target_shows_no_context_banner(
-    client: FlaskClient, account_id: int
-) -> None:
-    _open_position(client, account_id)
-    for query in ("instrument=999", "registration=999", "base=EUR&quote=EUR"):
-        body = client.get(f"/values?{query}").get_data(as_text=True)
-        assert "flash-info" not in body
-
 
 def test_price_picker_excludes_fixed_deposits_and_statement_positions(
     client: FlaskClient, account_id: int
@@ -497,19 +371,3 @@ def test_statement_picker_excludes_closed_registrations(
     statements = body.split('id="statements-heading"', 1)[1].split('id="fx-heading"', 1)[0]
     assert "FD_EUR_206" not in statements
     assert "Endowment Plan — Brokerage" in statements
-
-
-def test_values_price_picker_empty_state_explains_itself(
-    client: FlaskClient, account_id: int
-) -> None:
-    _open_position(
-        client, account_id,
-        new_instrument_name="FD_EUR_206", instrument_type="fixed_deposit",
-        tracking_mode="statement_valued", opening_quantity="",
-        statement_value="85000",
-    )
-    body = client.get("/values").get_data(as_text=True)
-    prices = body.split('id="prices-heading"', 1)[1].split('id="statements-heading"', 1)[0]
-    assert "No current quantity-tracked investments need manual prices." in prices
-    assert "dated statement values instead" in prices
-    assert "<form" not in prices

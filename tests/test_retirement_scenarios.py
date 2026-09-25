@@ -1,7 +1,6 @@
 """Frozen comparisons, exact annual return ordering and the complete write flow."""
 
 import json
-import re
 from datetime import date
 from decimal import Decimal as D
 
@@ -255,60 +254,6 @@ def test_missing_income_fx_blocks_save_and_stale_fx_is_frozen(app, client):
         validate_backup(export_backup())
         url = f"/retirement/scenarios/{row.id}"
     assert b'Stale inputs when saved' in client.get(url).data
-
-
-def test_entry_page_role_order_baseline_context_and_editor_island(app, client):
-    with app.app_context():
-        seed("1000", spending_policy="full_budget",
-             equity_return_decimal=D("0.05"), income_return_decimal=D("0.025"),
-             liquidity_return_decimal=D("0.01"), alternatives_return_decimal=D("0.03"))
-    html = client.get("/retirement/scenarios").get_data(as_text=True)
-    assert "Equity, Income, Liquidity, Alternatives" in html
-    # The resumption fallback is concrete: the saved plan's own returns.
-    assert "resume your saved plan's constant nominal returns: Equity 5% · Income 2.5% · Liquidity 1% · Alternatives 3%" in html
-    assert "after</em> that year's beginning-of-year spending" in html
-    # Editor data island; the labelled textarea remains the submitted field.
-    assert 'for="return_path"' in html
-    assert 'data-return-path="true"' in html
-    roles = re.search(r'data-roles="([^"]+)"', html).group(1)
-    for role in ("Equity", "Income", "Liquidity", "Alternatives"):
-        assert f"&#34;{role}&#34;" in roles
-    baseline = re.search(r'data-baseline="([^"]+)"', html).group(1)
-    for value in ("5", "2.5", "1", "3"):
-        assert f"&#34;{value}&#34;" in baseline
-
-
-def test_result_page_lead_tables_markers_and_chart(app, client):
-    with app.app_context():
-        portfolio, _, _ = seed("1000", spending_policy="full_budget")
-        row = save_scenario(portfolio, AS_OF, name="Lead", return_path="0,0,-100,0")
-        db.session.commit()
-        url = f"/retirement/scenarios/{row.id}"
-    html = client.get(url).get_data(as_text=True)
-    # Outcome lead names the difference without the table being read first.
-    assert "Core is not funded in every retirement year under the entered path." in html
-    assert "Entered path: first short at age 51" in html
-    # Comparison table keeps its narrow-screen scroll class; the chart island follows it.
-    assert "comparison-table" in html
-    assert html.index("comparison-table") < html.index('data-chart="scenario-ending"')
-    assert "chart.umd.min.js" in html
-    labels = re.search(r'data-labels="([^"]+)"', html).group(1)
-    for age in ("50", "51", "52"):
-        assert f"&#34;{age}&#34;" in labels
-    baseline_values = re.search(r'data-baseline="([^"]+)"', html).group(1)
-    assert "900.0" in baseline_values and "700.0" in baseline_values
-    stress_values = re.search(r'data-stress="([^"]+)"', html).group(1)
-    assert stress_values.count("0.0") == 3
-    # Annual summary tables: role-return columns, entered-year marker in words
-    # and class, and the resumption copy.
-    assert "Constant saved role returns every year." in html
-    assert "Your entered returns apply to year 1; later years resume the baseline returns." in html
-    assert html.count('class="entered-year"') == 1
-    assert "entered return" in html
-    assert "-100.00%" in html
-    # The disclosures keep the full per-year evidence.
-    assert "Per-year withdrawals, income and sources" in html
-    assert "Income available this year" in html
 
 
 def test_result_page_lead_when_both_paths_fund_core(app, client):

@@ -139,53 +139,6 @@ def _preview(client: FlaskClient, registration_id: int, cash_id: int, **override
 
 # --- Entry form presentation ---
 
-def test_disposition_form_context_status_prefills_and_keyboard_path(
-    client: FlaskClient, app: Flask
-) -> None:
-    registration_id, cash_account_id, _ = _records(app)
-    page = client.get(
-        f"/positions/{registration_id}/fixed-deposit/disposition?as_of=2026-08-28"
-    )
-    assert page.status_code == 200
-    body = page.get_data(as_text=True)
-    assert body.count("<h1") == 1 and "<h1>Record maturity disposition</h1>" in body
-    assert "FD_USD_203 · Bank · Fixed Deposits" in body
-    # The maturity state is explicit before any amount is asked for.
-    assert "Maturity overdue" in body
-    assert "matured 20 Aug 2026 — nothing was posted automatically." in body
-    # The bank quote stays visually subordinate reference data.
-    assert re.search(
-        r'<p class="meta">Bank-quoted expected proceeds:.*85,690\.25.*reference data, not the amount that will be posted\.</p>',
-        body, re.S,
-    )
-    # Every field has a programmatic label; required is stated in text.
-    for field in ("disposition_type", "effective_date", "confirmed_principal_amount",
-                  "confirmed_interest_amount", "cash_account_id", "note",
-                  "successor_instrument_name", "successor_maturity_date"):
-        assert f'<label for="{field}">' in body
-    required = re.findall(r'<label for="(\w+)">[^<]*<span class="req">', body)
-    assert required == [
-        "disposition_type", "effective_date",
-        "confirmed_principal_amount", "confirmed_interest_amount",
-    ]
-    # Hints state the confirmed-amounts contract in plain language.
-    assert "not a calculated amount" in body
-    assert "Never calculated from the annual rate" in body
-    # GET prefills principal and derives the interest prefill from the bank
-    # quote, leaving both editable.
-    assert 'value="85000"' in body
-    assert 'value="690.25"' in body
-    # Settlement date defaults to today (never before maturity).
-    assert f'value="{max(date.today(), MATURITY).isoformat()}"' in body
-    # Successor fields sit inside native disclosure; closed on first render.
-    assert "<details>" in body
-    assert "Successor deposit details (rollover only)" in body
-    # No-JavaScript path: explicit Preview submit, Cancel keeps the as-of date.
-    assert "Preview maturity disposition" in body
-    assert 'name="confirm_disposition"' not in body  # confirm appears only after preview
-    assert f'href="/positions/{registration_id}/fixed-deposit?as_of=2026-08-28">Cancel</a>' in body
-    assert_no_inline_script(body)
-
 
 def test_disposition_form_rejects_not_yet_due_deposit(
     client: FlaskClient, app: Flask

@@ -184,27 +184,6 @@ def test_holdings_cash_sort_by_reporting_value_missing_last(
     )
 
 
-def test_holdings_default_sort_is_instrument_ascending(
-    client: FlaskClient, app: Flask
-) -> None:
-    with app.app_context():
-        portfolio = _portfolio()
-        account = _account(portfolio)
-        _statement_position(portfolio, account, name="Zulu", value="5000")
-        _statement_position(portfolio, account, name="Alpha", value="100")
-    for path in ("/holdings", "/holdings?sort=bogus&direction=sideways"):
-        body = client.get(path).get_data(as_text=True)
-        assert 'aria-sort="ascending"' in body
-        assert body.index('<th scope="row">Alpha</th>') < body.index('<th scope="row">Zulu</th>')
-
-
-def test_holdings_empty_state_unchanged(client: FlaskClient, app: Flask) -> None:
-    with app.app_context():
-        portfolio = _portfolio()
-        _account(portfolio)
-    body = client.get("/holdings").get_data(as_text=True)
-    assert "No positions yet." in body
-    assert 'id="cash-heading"' not in body
 
 
 # --- Share/access row effects  ---

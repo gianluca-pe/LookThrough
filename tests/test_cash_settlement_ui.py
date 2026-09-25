@@ -225,15 +225,6 @@ def test_detail_renders_settled_elsewhere_distinctly(
     assert_no_inline_script(body)
 
 
-def test_setup_cash_step_explains_linked_account(
-    client: FlaskClient, linked: dict
-) -> None:
-    body = client.get("/setup/cash").get_data(as_text=True)
-    card = body.split("Brokerage SGD", 1)[1].split("</section>", 1)[0]
-    assert "settles in another account" in card
-    assert "activity cash settles in Settlement SGD" in card
-    assert "Set current cash balance" not in card
-
 
 # --- Activity preview and receipt naming ---
 

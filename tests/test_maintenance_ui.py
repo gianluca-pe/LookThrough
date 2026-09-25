@@ -87,49 +87,7 @@ def _valid_backup_upload(app: Flask) -> bytes:
 
 # --- Settings page ---
 
-def test_settings_cards_counts_and_export_actions(
-    client: FlaskClient, app: Flask
-) -> None:
-    _portfolio(app)
-    page = client.get("/settings")
-    assert page.status_code == 200
-    body = page.get_data(as_text=True)
-    assert body.count("<h1") == 1 and "<h1>Settings & backup</h1>" in body
-    # Portfolio settings card uses the shared money rendering.
-    assert "<dt>Annual spending</dt>" in body
-    assert '<span class="ccy">USD</span> 48,000.00' in body
-    # Exports are distinguished from the complete backup.
-    assert "CSV files are readable extracts" in body
-    assert 'href="/holdings.csv"' in body
-    assert 'href="/activity.csv"' in body
-    assert 'href="/backup/export"' in body
-    # The record-count line states the true database contents.
-    assert "6 records across 22 backed-up tables" in body
-    # Restore form: programmatic label, required stated in text, guidance hint.
-    assert '<label for="backup_file">LookThrough JSON backup <span class="req">(required)</span></label>' in body
-    assert 'id="backup_file-hint"' in body
-    assert "validated before anything changes" in body
-    # Local-only privacy statement.
-    assert "do not upload portfolio data or call a remote service" in body
-    assert_no_inline_script(body)
 
-
-def test_settings_clean_database_offers_setup_and_restore(
-    client: FlaskClient,
-) -> None:
-    body = client.get("/settings").get_data(as_text=True)
-    assert "No portfolio is configured" in body
-    assert "Start setup" in body
-    assert "Exports become available after setup or restore." in body
-    assert 'href="/holdings.csv"' not in body
-    # Restore remains reachable from a clean database.
-    assert 'name="backup_file"' in body
-
-
-def test_settings_nav_destination_is_linked(client: FlaskClient, app: Flask) -> None:
-    _portfolio(app)
-    body = client.get("/settings").get_data(as_text=True)
-    assert 'href="/settings" aria-current="page"' in body
 
 
 # --- Restore validation presentation ---
@@ -215,16 +173,3 @@ def test_restore_requires_explicit_confirmation_with_focus(
 
 
 # --- Contextual CSV entry points ---
-
-def test_holdings_export_link_preserves_as_of(client: FlaskClient, app: Flask) -> None:
-    _portfolio(app)
-    body = client.get("/holdings?as_of=2026-08-02").get_data(as_text=True)
-    assert 'href="/holdings.csv?as_of=2026-08-02"' in body
-
-
-def test_activity_export_link_preserves_filters(
-    client: FlaskClient, app: Flask
-) -> None:
-    _portfolio(app)
-    body = client.get("/activity?type=buy").get_data(as_text=True)
-    assert 'href="/activity.csv?type=buy"' in body

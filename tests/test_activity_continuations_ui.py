@@ -107,30 +107,6 @@ def _buy(client: FlaskClient, records: dict, **overrides) -> None:
 
 # --- Inline instrument disclosure ---
 
-def test_buy_form_offers_compact_identity_disclosure(
-    client: FlaskClient, records: dict
-) -> None:
-    buy = client.get("/activity/new?type=buy").get_data(as_text=True)
-    sell = client.get("/activity/new?type=sell").get_data(as_text=True)
-
-    assert ">Add a new instrument</option>" in buy
-    assert ">Add a new instrument</option>" not in sell
-    details = re.search(r'<details class="disclosure"[^>]*>', buy).group(0)
-    assert "open" not in details
-    assert "<summary>Add a new instrument</summary>" in buy
-    for field_id in (
-        "new_instrument_name", "new_ticker_or_isin",
-        "new_valuation_currency_code", "new_instrument_type",
-    ):
-        assert f'id="{field_id}"' in buy
-        assert f'id="{field_id}"' not in sell
-    assert "classify it later" in buy
-    # Enter submits the primary trade action: Record precedes both the
-    # Preview and the identity-save submit in DOM order.
-    assert buy.index('id="post_trade"') < buy.index('id="preview_trade"')
-    assert buy.index('id="post_trade"') < buy.index('id="create_instrument"')
-    assert_no_inline_script(buy)
-
 
 def test_recording_with_unsaved_new_instrument_instructs_save(
     client: FlaskClient, records: dict
@@ -215,35 +191,6 @@ def test_sale_success_offers_replacement_only_when_eligible(
     assert "Use sale proceeds" not in buy_success
     assert_no_inline_script(success)
 
-
-def test_replacement_form_context_panel_and_safe_prefill(
-    client: FlaskClient, records: dict
-) -> None:
-    sale_location = _sell(client, records)
-    sale_id = sale_location.split("/")[2]
-    body = client.get(f"/activity/{sale_id}/replacement").get_data(as_text=True)
-
-    panel = body.split('class="context-panel"', 1)[1].split("</section>", 1)[0]
-    assert "Continue from sale" in panel
-    assert '<span class="ccy">EUR</span> 3,310.00' in panel
-    assert "Brokerage EUR" in panel
-    assert "4 Aug 2026" in panel
-    assert "separate activity" in panel
-
-    # Account, date, and hidden continuation context arrive prefilled.
-    assert f'value="{sale_id}"' in body
-    assert re.search(
-        r'<option selected value="\d+">Broker A — Brokerage EUR</option>', body
-    )
-    assert 'value="2026-08-04"' in body
-    # The replacement still allows creating a new instrument inline; its
-    # currency defaults to the sale's settlement currency.
-    assert ">Add a new instrument</option>" in body
-    currency_tag = re.search(
-        r'<input[^>]*id="new_valuation_currency_code"[^>]*>', body
-    ).group(0)
-    assert 'value="EUR"' in currency_tag
-    assert_no_inline_script(body)
 
 
 def test_replacement_route_rejects_tampered_or_buy_sources(

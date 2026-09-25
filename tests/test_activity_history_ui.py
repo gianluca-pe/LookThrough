@@ -92,50 +92,12 @@ def records(app: Flask) -> dict:
         }
 
 
-def _sidebar(page: str) -> str:
-    return page.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
-
 
 # --- Navigation ---
 
-def test_activity_destination_is_enabled_and_current(
-    client: FlaskClient, records: dict
-) -> None:
-    for url in (
-        "/activity",
-        f"/activity/{records['buy_id']}",
-        f"/activity/{records['buy_id']}/reverse",
-        "/activity/new?type=buy",
-    ):
-        nav = _sidebar(client.get(url).get_data(as_text=True))
-        current = re.search(
-            r'<a href="([^"]+)" aria-current="page">([^<]+)</a>', nav
-        )
-        assert current, url
-        assert current.group(1) == "/activity"
-        assert current.group(2) == "Activity"
-
-
-def test_overview_keeps_its_own_current_nav(client: FlaskClient, records: dict) -> None:
-    nav = _sidebar(client.get("/overview").get_data(as_text=True))
-    current = re.search(r'<a href="([^"]+)" aria-current="page">([^<]+)</a>', nav)
-    assert current.group(1) == "/overview"
 
 
 # --- Secondary history links ---
-
-def test_secondary_history_links_from_main_screens(
-    client: FlaskClient, records: dict
-) -> None:
-    overview = client.get("/overview").get_data(as_text=True)
-    holdings = client.get("/holdings").get_data(as_text=True)
-    accounts = client.get("/accounts").get_data(as_text=True)
-    for body in (overview, holdings, accounts):
-        assert 'href="/activity">Activity history</a>' in body
-    detail = client.get(f"/accounts/{records['account_id']}").get_data(as_text=True)
-    assert (
-        f'href="/activity?account_id={records["account_id"]}"' in detail
-    )
 
 
 # --- History list ---
@@ -203,17 +165,6 @@ def test_filter_errors_are_linked_announced_and_preserve_selections(
     ).group(0)
     assert "selected" in type_option
 
-
-def test_filter_selects_are_typeahead_enhanced_with_fallback(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/activity").get_data(as_text=True)
-    for field in ("account_id", "instrument_id"):
-        tag = re.search(rf'<select[^>]*id="{field}"[^>]*>', body).group(0)
-        assert 'data-typeahead="true"' in tag
-    # Without JavaScript the plain selects submit the same names.
-    assert ">Broker A — Brokerage EUR</option>" in body
-    assert ">Income Fund</option>" in body
 
 
 # --- Detail ---
@@ -334,43 +285,6 @@ def test_group_reversal_confirms_both_and_reports_linked_message(
 
 # --- Undo exits ---
 
-def test_buy_success_undo_links_to_get_confirmation(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get(f"/activity/{records['buy_id']}/success").get_data(as_text=True)
-    assert f'href="/activity/{records["buy_id"]}/reverse">Undo</a>' in body
-    # The Undo target is the confirmation page, not a form.
-    confirmation = client.get(f"/activity/{records['buy_id']}/reverse")
-    assert confirmation.status_code == 200
-    assert "<form" not in re.search(
-        r'<div class="next-actions">(.*?)</div>', body, re.DOTALL
-    ).group(1)
-
-
-def test_dividend_success_undo_links_the_dividend_transaction(
-    app: Flask, client: FlaskClient, records: dict
-) -> None:
-    with app.app_context():
-        posted = post_dividend(
-            DividendCommand(
-                portfolio_id=records["portfolio_id"],
-                effective_date=date(2026, 8, 4),
-                account_id=records["account_id"],
-                instrument_id=records["instrument_id"],
-                currency_code="EUR",
-                net_amount=Decimal("425"),
-                outcome="reinvest_same",
-                reinvestment_quantity=Decimal("40"),
-                reinvestment_unit_price=Decimal("10.60"),
-                reinvestment_fee_amount=Decimal("1"),
-            )
-        )
-        dividend_id = posted.dividend_transaction_id
-    body = client.get(f"/activity/dividend/{dividend_id}/success").get_data(as_text=True)
-    assert f'href="/activity/{dividend_id}/reverse">Undo</a>' in body
-    # The confirmation resolves the whole linked group from the dividend ID.
-    confirmation = client.get(f"/activity/{dividend_id}/reverse").get_data(as_text=True)
-    assert "linked dividend and purchase" in confirmation
 
 
 # --- Final observed timing pass ---

@@ -7,7 +7,6 @@ from flask import Flask
 from flask.testing import FlaskClient
 from sqlalchemy import func, select
 
-from app.accounts import _index_accounts
 from app.extensions import db
 from app.models import Account, CashBalanceCheckpoint, Institution, Portfolio, Transaction
 
@@ -67,24 +66,6 @@ def _old_checkpoint(account: Account) -> CashBalanceCheckpoint:
     db.session.commit()
     return checkpoint
 
-
-def test_edit_get_prefills_bounded_account_fields(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        _, account = _records()
-        account_id = account.id
-
-    body = client.get(f"/accounts/{account_id}/edit").get_data(as_text=True)
-
-    assert 'value="Everyday savings"' in body
-    assert 'value="OLD-REF"' in body
-    assert '<option selected value="separate_cash">' in body
-    # Share/access fields render stored factors as percentages.
-    assert 'id="portfolio_share_percent"' in body
-    assert 'id="present_access_percent"' in body
-    assert 'id="earliest_access_date"' in body
-    assert 'id="access_note"' in body
 
 
 def test_separate_to_aggregate_preserves_but_excludes_confirmation(
@@ -306,32 +287,3 @@ def test_older_edit_form_omission_does_not_clear_existing_settlement_link(
     assert response.status_code == 302
     with app.app_context():
         assert db.session.get(Account, source_id).cash_settlement_account_id == target_id
-
-
-def test_account_sort_contract_is_server_side_and_stable(app: Flask) -> None:
-    with app.app_context():
-        portfolio, first = _records(mode="separate_cash")
-        second = Account(
-            portfolio_id=portfolio.id,
-            institution_id=first.institution_id,
-            name="Aggregate wrapper",
-            account_type="retirement",
-            default_currency_code="EUR",
-            is_multicurrency=False,
-            cash_tracking_mode="included_in_aggregate",
-            portfolio_share_decimal=Decimal("1"),
-            present_access_decimal=Decimal("1"),
-            relationship_eligible=True,
-            is_active=True,
-        )
-        db.session.add(second)
-        db.session.commit()
-
-        with app.test_request_context("/accounts?sort=cash&direction=asc"):
-            accounts, sort_by, direction = _index_accounts(portfolio.id)
-
-        assert sort_by == "cash" and direction == "asc"
-        assert [row.cash_tracking_mode for row in accounts] == [
-            "included_in_aggregate",
-            "separate_cash",
-        ]

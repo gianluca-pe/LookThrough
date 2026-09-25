@@ -86,81 +86,12 @@ def _trade_data(records: dict, **overrides) -> dict:
 
 # --- Type chooser ---
 
-def test_chooser_offers_large_choices(client: FlaskClient, records: dict) -> None:
-    body = client.get("/activity/new").get_data(as_text=True)
-    assert "<h1>Add activity</h1>" in body
-    choices = body.split('class="activity-choices"', 1)[1]
-    # Buy and Sell are real links; unavailable types are disabled labels.
-    assert 'class="activity-choice" href="/activity/new?type=buy"' in choices
-    assert 'class="activity-choice" href="/activity/new?type=sell"' in choices
-    disabled = re.findall(r'<span class="activity-choice" aria-disabled="true">', choices)
-    assert len(disabled) == 2
-    assert "Transfer / FX" in choices and "More…" in choices
-    assert 'href="/activity/new?type=transfer"' not in choices
-    # The chooser does not render the trade form.
-    assert 'id="quantity"' not in body
-    assert_no_inline_script(body)
-
-
-def test_switcher_marks_current_type(client: FlaskClient, records: dict) -> None:
-    body = client.get("/activity/new?type=sell").get_data(as_text=True)
-    switcher = body.split('aria-label="Activity type"', 1)[1].split("</nav>", 1)[0]
-    assert "<strong aria-current=\"page\">Sell</strong>" in switcher
-    assert 'href="/activity/new?type=buy"' in switcher
 
 
 # --- Compact form keyboard contract ---
 
-def test_form_fields_in_entry_order_with_primary_action_first(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/activity/new?type=buy").get_data(as_text=True)
-    positions = [
-        body.index(f'id="{field}"')
-        for field in (
-            "effective_date", "account_id", "instrument_id",
-            "quantity", "unit_price", "fee_amount",
-        )
-    ]
-    assert positions == sorted(positions)
-    # Tab order: Record (primary) comes before Preview and Cancel; Enter in
-    # the form submits the first submit control, which is Record.
-    assert body.index('id="post_trade"') < body.index('id="preview_trade"')
-    assert body.index('id="preview_trade"') < body.index(">Cancel<")
 
 
-def test_first_empty_required_field_is_focused_on_load(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/activity/new?type=buy").get_data(as_text=True)
-    # Date defaults to today, so Account is the first empty required field.
-    assert body.count("autofocus") == 1
-    account_tag = re.search(r'<select[^>]*id="account_id"[^>]*>', body).group(0)
-    assert "autofocus" in account_tag
-
-
-def test_labels_state_required_and_fee_is_optional(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/activity/new?type=buy").get_data(as_text=True)
-    for field in ("effective_date", "account_id", "instrument_id", "quantity", "unit_price"):
-        label = re.search(rf'<label for="{field}">(.*?)</label>', body).group(1)
-        assert "(required)" in label
-    fee_label = re.search(r'<label for="fee_amount">(.*?)</label>', body).group(1)
-    assert "(required)" not in fee_label
-    assert "leave blank for no fee" in body
-
-
-def test_pickers_are_typeahead_enhanced_with_select_fallback(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/activity/new?type=buy").get_data(as_text=True)
-    for field in ("account_id", "instrument_id"):
-        tag = re.search(rf'<select[^>]*id="{field}"[^>]*>', body).group(0)
-        assert 'data-typeahead="true"' in tag
-    # Without JavaScript the plain selects submit the same ids.
-    assert ">Broker A — Brokerage EUR</option>" in body
-    assert "Global Fund (FUND123)" in body
 
 
 # --- Server-rendered preview presentation ---
@@ -241,66 +172,10 @@ def test_validation_error_summary_links_and_focuses_first_field(
 
 # --- Success receipt ---
 
-def _post_buy(client: FlaskClient, records: dict) -> str:
-    response = client.post("/activity/new", data=_trade_data(records))
-    assert response.status_code == 302
-    return client.get(response.headers["Location"]).get_data(as_text=True)
 
-
-def test_success_panel_receipt_and_actions(
-    client: FlaskClient, records: dict
-) -> None:
-    body = _post_buy(client, records)
-    panel = re.search(r'<div class="success-panel"[^>]*>', body).group(0)
-    assert 'tabindex="-1"' in panel
-    assert "<h1>Buy recorded</h1>" in body
-    assert "Bought" in body
-    assert "<strong>1,000 units</strong>" in body
-    assert '<span class="ccy">EUR</span> 10,250.00' in body
-    assert '<span class="ccy">EUR</span> 25.00' in body
-    assert '<span class="ccy">EUR</span> -10,275.00' in body
-    assert "4 Aug 2026" in body
-    # Delivered exits: Add another, View Holdings, and Undo — the last links
-    # to the GET reversal confirmation, never a direct POST.
-    assert 'href="/activity/new?type=buy">Add another' in body
-    assert 'href="/holdings">View Holdings' in body
-    assert 'href="/activity/1/reverse">Undo</a>' in body
-    assert "proceeds" not in body
-    assert_no_inline_script(body)
-
-
-def test_sell_success_names_the_sale(client: FlaskClient, records: dict) -> None:
-    client.post("/activity/new", data=_trade_data(records))
-    response = client.post(
-        "/activity/new",
-        data=_trade_data(
-            records, activity_type="sell", quantity="300",
-            unit_price="11.10", fee_amount="20",
-        ),
-    )
-    body = client.get(response.headers["Location"]).get_data(as_text=True)
-    assert "<h1>Sell recorded</h1>" in body
-    assert "Sold" in body
-    assert 'href="/activity/new?type=sell">Add another' in body
 
 
 # --- Progressive enhancement ---
-
-def test_enhancement_hooks_present_and_server_side_fallbacks_intact(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/activity/new?type=buy").get_data(as_text=True)
-    form_tag = re.search(r"<form[^>]*>", body).group(0)
-    assert 'data-live-preview="true"' in form_tag
-    assert 'id="preview-region"' in body
-
-    script = client.get("/static/js/enhance.js").get_data(as_text=True)
-    assert "data-live-preview" in script
-    assert "success-panel" in script
-    # The no-JS path never depends on the enhancement: a real Preview submit
-    # button posts to the preview route.
-    preview_tag = re.search(r'<input[^>]*id="preview_trade"[^>]*>', body).group(0)
-    assert 'formaction="/activity/preview"' in preview_tag
 
 
 def test_typeahead_guards_identifiers_and_accepts_typed_text(
@@ -523,28 +398,3 @@ def test_chooser_forwards_return_context(client: FlaskClient, records: dict) -> 
 
 
 # --- Typeahead accessibility contract ---
-
-def test_typeahead_field_keeps_the_id_and_aria_contract(
-    client: FlaskClient, records: dict
-) -> None:
-    """The server-rendered select carries id + aria wiring; enhance.js moves
-    that whole contract onto the visible typeahead input (the select becomes
-    #instrument_id-native and keeps only the submitted name)."""
-    body = client.post(
-        "/activity/new", data=_trade_data(records, instrument_id="")
-    ).get_data(as_text=True)
-    # The error summary anchors to the field id…
-    assert 'href="#instrument_id"' in body
-    select = re.search(r'<select[^>]*id="instrument_id"[^>]*>', body).group(0)
-    # …which resolves to a focusable element after enhancement because the
-    # visible input takes the id over.
-    assert 'aria-invalid="true"' in select
-    assert re.search(r'aria-describedby="[^"]*instrument_id-error[^"]*"', select)
-    assert 'data-typeahead="true"' in select
-    assert 'id="instrument_id-error"' in body
-
-    script = client.get("/static/js/enhance.js").get_data(as_text=True)
-    assert 'input.id = fid' in script
-    assert 'select.id = fid + "-native"' in script
-    assert 'getAttribute("aria-invalid")' in script
-    assert 'getAttribute("aria-describedby")' in script

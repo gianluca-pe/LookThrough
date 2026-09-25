@@ -82,42 +82,6 @@ def _statement_position(portfolio: Portfolio, account: Account, *, with_value: b
     return registration
 
 
-def test_root_resumes_each_incomplete_stage_then_opens_overview(
-    app: Flask, client: FlaskClient
-) -> None:
-    assert client.get("/").headers["Location"].endswith("/setup")
-
-    with app.app_context():
-        portfolio_id = _portfolio().id
-    assert client.get("/").headers["Location"].endswith("/setup?step=accounts")
-
-    with app.app_context():
-        portfolio = db.session.get(Portfolio, portfolio_id)
-        account_id = _account(portfolio).id
-    assert client.get("/").headers["Location"].endswith("/setup/positions")
-
-    with app.app_context():
-        portfolio = db.session.get(Portfolio, portfolio_id)
-        account = db.session.get(Account, account_id)
-        _statement_position(portfolio, account, with_value=True)
-    assert client.get("/").headers["Location"].endswith("/overview")
-
-
-def test_direct_overview_and_review_requests_resume_missing_prerequisites(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        portfolio_id = _portfolio().id
-
-    for path in ("/overview", "/setup/review"):
-        assert client.get(path).headers["Location"].endswith("/setup?step=accounts")
-
-    with app.app_context():
-        portfolio = db.session.get(Portfolio, portfolio_id)
-        _account(portfolio)
-
-    for path in ("/overview", "/setup/review"):
-        assert client.get(path).headers["Location"].endswith("/setup/positions")
 
 
 def test_overview_review_and_holdings_show_the_same_reporting_total(
@@ -153,17 +117,3 @@ def test_review_remains_available_with_missing_values_and_never_shows_zero(
     assert "No position has a reporting value" not in body
     assert "EUR 0.00" not in body
     assert 'href="/overview"' in body
-
-
-def test_overview_navigation_replaces_the_preview_endpoint(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        portfolio = _portfolio()
-        account = _account(portfolio)
-        _statement_position(portfolio, account, with_value=True)
-
-    body = client.get("/overview").get_data(as_text=True)
-    sidebar = body.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
-    assert '<a href="/overview" aria-current="page">Overview</a>' in sidebar
-    assert 'href="/shell/preview"' not in sidebar

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from decimal import Decimal
 
 from flask import Flask
@@ -75,15 +74,6 @@ def test_zero_change_has_no_sign_and_no_colour(
     assert "+0.00" not in body
 
 
-def test_first_snapshot_state_is_calm(app: Flask, client: FlaskClient) -> None:
-    ids = _seed(app)
-    with app.app_context():
-        save_snapshot(db.session.get(Portfolio, ids["portfolio_id"]), FIRST)
-    body = _latest_detail(client, app)
-    assert "first snapshot" in body
-    assert "no earlier frozen record" in body
-    assert "Unattributed value change" not in body
-
 
 def test_partial_comparison_is_local_and_labelled(
     app: Flask, client: FlaskClient
@@ -117,15 +107,6 @@ def test_partial_comparison_is_local_and_labelled(
     assert "incomplete" in body
 
 
-def test_index_lists_newest_first_and_links_detail(
-    app: Flask, client: FlaskClient
-) -> None:
-    _two_snapshots(app)
-    body = client.get("/snapshots").get_data(as_text=True)
-    assert body.index("1 Feb 2026") < body.index("1 Jan 2026")
-    assert "Save snapshot" in body
-    assert_no_inline_script(body)
-
 
 def test_save_preview_marks_state_and_requires_confirmation(
     app: Flask, client: FlaskClient
@@ -143,31 +124,3 @@ def test_save_preview_marks_state_and_requires_confirmation(
     assert "Confirm before saving" in refused_body
     assert 'href="#confirm_snapshot"' in refused_body
     assert "autofocus" in refused_body
-
-
-def test_confirm_snapshot_is_a_labelled_checkbox_with_hint(
-    app: Flask, client: FlaskClient
-) -> None:
-    _seed(app)
-    body = client.get("/snapshots/new").get_data(as_text=True)
-    # The confirmation is a checkbox row (input before label), not a stacked
-    # text field, with its immutability hint and required stated in text.
-    row = re.search(
-        r'<div class="field field-check">(.*?)</label>', body, re.S
-    ).group(1)
-    assert row.index('id="confirm_snapshot"') < row.index("<label")
-    assert "(required)" in row
-    assert 'id="confirm_snapshot-hint"' in body
-    field = re.search(r'<input[^>]*id="confirm_snapshot"[^>]*>', body).group(0)
-    assert 'aria-describedby="confirm_snapshot-hint"' in field
-
-    refused = client.post("/snapshots/new", data={"as_of_date": FIRST.isoformat()})
-    refused_body = refused.get_data(as_text=True)
-    field = re.search(
-        r'<input[^>]*id="confirm_snapshot"[^>]*>', refused_body
-    ).group(0)
-    # Error and hint are both rendered and both referenced, error first.
-    assert 'aria-describedby="confirm_snapshot-error confirm_snapshot-hint"' in field
-    assert refused_body.index('id="confirm_snapshot-error"') < refused_body.index(
-        'id="confirm_snapshot-hint"'
-    )

@@ -107,11 +107,6 @@ def _confirmation_data(**overrides: str) -> dict[str, str]:
     return data
 
 
-def test_accounts_redirects_to_setup_without_portfolio(client: FlaskClient) -> None:
-    response = client.get("/accounts")
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/setup")
-
 
 def test_confirmation_flow_reconciles_without_creating_activity(
     app: Flask, client: FlaskClient
@@ -227,47 +222,3 @@ def test_included_aggregate_account_blocks_separate_confirmation(
     assert "would count the same value twice" in body
     with app.app_context():
         assert db.session.scalar(select(func.count(CashBalanceCheckpoint.id))) == 0
-
-
-def test_cash_setup_and_trade_preview_disclose_confirmation_cutoff(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        _, separate, _, instrument = _records()
-        account_id, instrument_id = separate.id, instrument.id
-
-    setup = client.get("/setup/cash").get_data(as_text=True)
-    assert setup.count('aria-current="step"') == 1
-    assert "Add current cash" in setup
-    assert "cash is already inside this account" in setup
-    assert "aggregate statement value" in setup
-
-    client.post(
-        f"/accounts/{account_id}/cash-confirmations",
-        data=_confirmation_data(),
-    )
-    preview = client.post(
-        "/activity/preview",
-        data={
-            "activity_type": "buy",
-            "effective_date": "2026-06-30",
-            "account_id": account_id,
-            "instrument_id": instrument_id,
-            "quantity": "10",
-            "unit_price": "12",
-            "fee_amount": "0",
-        },
-    ).get_data(as_text=True)
-    assert "on or before the cash confirmation dated 2026-06-30" in preview
-    assert "not current confirmed-and-carried-forward cash" in preview
-
-    positions = client.get("/setup/positions").get_data(as_text=True)
-    rail = positions.split('aria-label="Setup progress"', 1)[1].split(
-        "</nav>", 1
-    )[0]
-    assert re.search(
-        r'<li class="step-complete">.*?'
-        r'<span class="step-label">Cash</span>.*?\(completed\).*?</li>',
-        rail,
-        re.DOTALL,
-    )

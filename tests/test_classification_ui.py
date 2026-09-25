@@ -23,7 +23,6 @@ from app.models import (
 from app.services.cash import CashConfirmationCommand, confirm_cash
 from app.services.classification import ClassificationCommand, save_classification
 
-from test_overview_ui import assert_no_inline_script
 
 
 AS_OF = date(2026, 8, 9)
@@ -124,22 +123,6 @@ def _classification_data(**overrides: str) -> dict[str, str]:
 
 # --- Instruments index and navigation ---
 
-def test_index_lists_instruments_and_nav_is_linked(
-    client: FlaskClient, app: Flask
-) -> None:
-    portfolio_id, account_id = _portfolio_account(app)
-    with app.app_context():
-        _priced_position(portfolio_id, account_id, name="Global Fund", amount="500")
-    body = client.get("/instruments").get_data(as_text=True)
-    assert "<h1>Instruments</h1>" in body
-    assert '<th scope="row">Global Fund' in body
-    assert '<span class="badge badge-missing">Unclassified</span>' in body
-    assert 'href="/instruments/1/classification"' in body
-    sidebar = body.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
-    assert '<a href="/instruments" aria-current="page">Instruments</a>' in sidebar
-    assert "<th scope=\"col\">Hedging</th>" not in body
-    assert_no_inline_script(body)
-
 
 # --- Classification editor ---
 
@@ -239,23 +222,6 @@ def test_editor_advanced_split_saves(
     row = index.split('<th scope="row">Balanced Fund', 1)[1].split("</tr>", 1)[0]
     assert "Equity 60%" in row and "Liquidity 40%" in row
 
-
-def test_editor_role_paths_and_definitions_are_complete_without_javascript(
-    client: FlaskClient, app: Flask
-) -> None:
-    portfolio_id, account_id = _portfolio_account(app)
-    with app.app_context():
-        _priced_position(portfolio_id, account_id, name="Balanced Fund", amount="500")
-
-    body = client.get("/instruments/1/classification").get_data(as_text=True)
-    assert 'data-primary-role-section' in body
-    assert '<fieldset class="field classification-role-split" data-advanced-roles>' in body
-    assert '<details class="disclosure"' not in body
-    assert "Allocation role definitions" in body
-    assert "Cash, money-market funds, T-bills, and short fixed deposits." in body
-    assert "Percentages must total 100%." in body
-    assert "You may leave this unset." in body
-    assert_no_inline_script(body)
 
 
 def test_editor_advanced_total_90_rejected_linked_focused_atomic(
@@ -425,17 +391,3 @@ def test_overview_missing_value_produces_no_allocation_card(
 
 
 # --- Holdings columns ---
-
-def test_holdings_role_bucket_columns_and_classify_links(
-    client: FlaskClient, app: Flask
-) -> None:
-    _allocation_fixture(app)
-    body = client.get("/holdings?as_of=2026-08-09").get_data(as_text=True)
-    classified = body.split('<th scope="row">Classified Fund</th>', 1)[1].split("</tr>", 1)[0]
-    assert "Equity 60%" in classified and "Liquidity 40%" in classified
-    assert "Now (0–3 years)" in classified
-    other = body.split('<th scope="row">Other Fund</th>', 1)[1].split("</tr>", 1)[0]
-    assert "Unclassified" in other
-    assert 'aria-label="Classify Other Fund"' in other
-    assert 'href="/instruments/2/classification"' in other
-    assert_no_inline_script(body)

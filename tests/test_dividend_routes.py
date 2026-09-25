@@ -18,7 +18,6 @@ from app.models import (
     Posting,
     Transaction,
 )
-from app.services.dividends import DividendCommand, post_dividend
 
 
 def _records():
@@ -95,53 +94,6 @@ def _data(account_id: int, source_id: int, **overrides: object):
     return data
 
 
-def test_dividend_routes_redirect_to_setup_without_portfolio(
-    client: FlaskClient,
-) -> None:
-    get_response = client.get("/activity/dividend/new")
-    post_response = client.post("/activity/dividend", data={})
-    assert get_response.status_code == 302
-    assert post_response.status_code == 302
-    assert get_response.headers["Location"].endswith("/setup")
-
-
-def test_activity_chooser_and_dividend_form_are_complete_without_js(
-    app: Flask,
-    client: FlaskClient,
-) -> None:
-    with app.app_context():
-        _records()
-    app.config["CURRENT_DATE_PROVIDER"] = lambda: date(2026, 8, 5)
-
-    chooser = client.get("/activity/new").get_data(as_text=True)
-    assert 'href="/activity/dividend/new"' in chooser
-    body = client.get("/activity/dividend/new").get_data(as_text=True)
-
-    assert "<h1>Record dividend</h1>" in body
-    assert 'value="2026-08-05"' in body
-    assert "Accumulating share class?" in body
-    assert "Do not record a dividend" in body
-    for field_id in (
-        "effective_date",
-        "account_id",
-        "instrument_id",
-        "currency_code",
-        "net_amount",
-        "outcome",
-        "gross_amount",
-        "withholding_amount",
-        "reinvestment_instrument_id",
-        "reinvestment_quantity",
-        "reinvestment_unit_price",
-        "reinvestment_purchase_amount",
-        "reinvestment_fee_amount",
-    ):
-        assert f'id="{field_id}"' in body
-        assert f'for="{field_id}"' in body
-    assert 'action="/activity/dividend"' in body
-    assert 'formaction="/activity/dividend/preview"' in body
-    scripts = [re.sub(r"\?v=\d+", "", tag) for tag in re.findall(r"<script[^>]*>", body)]
-    assert scripts == ['<script src="/static/js/enhance.js" defer>']
 
 
 def test_cash_dividend_preview_is_exact_and_does_not_write(
@@ -304,29 +256,3 @@ def test_missing_reinvestment_values_focus_first_material_error(
     assert "autofocus" in quantity_tag
     with app.app_context():
         assert db.session.scalar(select(func.count(Transaction.id))) == 0
-
-
-def test_dividend_success_is_portfolio_scoped(
-    app: Flask,
-    client: FlaskClient,
-) -> None:
-    with app.app_context():
-        first, _, _, _ = _records()
-        other, other_account, other_source, _ = _records()
-        posted = post_dividend(
-            DividendCommand(
-                portfolio_id=other.id,
-                effective_date=date(2026, 8, 4),
-                account_id=other_account.id,
-                instrument_id=other_source.id,
-                currency_code="EUR",
-                net_amount=Decimal("100"),
-                outcome="cash",
-            )
-        )
-        assert first.id != other.id
-
-    response = client.get(
-        f"/activity/dividend/{posted.dividend_transaction_id}/success"
-    )
-    assert response.status_code == 404

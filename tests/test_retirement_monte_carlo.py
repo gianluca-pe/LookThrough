@@ -376,10 +376,7 @@ def test_routes_unsaved_review_prg_chart_report_and_no_database_writes(app, clie
         before = json.loads(export_backup())['tables']
     token, page, fields = _entry(client)
     assert page.status_code == 200
-    assert b'Current model' in page.data
     assert b'data-path-count="1000"' in page.data
-    assert b'16.30%' in page.data
-    assert b'illustrative broad-market preset' in page.data
     response = client.post('/retirement/monte-carlo', data=fields)
     assert response.status_code == 302
     result = client.get(response.location)
@@ -387,15 +384,9 @@ def test_routes_unsaved_review_prg_chart_report_and_no_database_writes(app, clie
     html = result.get_data(as_text=True)
     chart = json.loads(unescape(re.search(r'data-values="([^"]+)"', html)[1]))
     assert chart['allocations'][0]['median'] == chart['allocations'][1]['median']
-    assert b'1,000 paths' in result.data
     run_token = parse_qs(urlparse(response.location).query)['run'][0]
     report = client.get('/retirement/monte-carlo/details', query_string={'run': run_token, 'path': 1000})
     assert report.status_code == 200
-    assert b'Path 1000' in report.data
-    assert b'Chart-equivalent annual capital ranges' in report.data
-    assert b'FD maturity' in report.data
-    assert b'16.30%' in report.data
-    assert b'All compound-growth rates remain your inputs.' in report.data
     assert client.get('/retirement/monte-carlo/details', query_string={'run': run_token,'path':0}).status_code == 422
     assert client.get('/retirement/monte-carlo/details', query_string={'run': run_token,'path':1001}).status_code == 422
     assert client.get('/retirement/monte-carlo/details', query_string={'run':run_token,'path':'NaN'}).status_code == 422

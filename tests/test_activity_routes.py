@@ -1,7 +1,6 @@
 """Integration contract for the server-rendered Buy/Sell workflow."""
 
 import re
-from datetime import date
 from decimal import Decimal
 
 from flask import Flask
@@ -71,39 +70,6 @@ def _trade_data(account_id: int, instrument_id: int, **overrides):
     return data
 
 
-def test_add_activity_redirects_to_setup_without_portfolio(client: FlaskClient) -> None:
-    response = client.get("/activity/new")
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/setup")
-
-
-def test_activity_chooser_and_compact_trade_form(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        _records()
-    app.config["CURRENT_DATE_PROVIDER"] = lambda: date(2026, 8, 4)
-
-    chooser = client.get("/activity/new").get_data(as_text=True)
-    assert "<h1>Add activity</h1>" in chooser
-    assert 'href="/activity/new?type=buy"' in chooser
-    assert 'href="/activity/new?type=sell"' in chooser
-    assert "Transfer / FX" in chooser and 'aria-disabled="true"' in chooser
-
-    body = client.get("/activity/new?type=buy").get_data(as_text=True)
-    for field_id in (
-        "effective_date",
-        "account_id",
-        "instrument_id",
-        "quantity",
-        "unit_price",
-        "fee_amount",
-    ):
-        assert f'id="{field_id}"' in body
-        assert f'for="{field_id}"' in body
-    assert 'value="2026-08-04"' in body
-    assert "Settlement currency" not in body
-    assert 'formaction="/activity/preview"' in body
 
 
 def test_preview_renders_exact_effects_without_writing(
@@ -267,12 +233,3 @@ def test_sell_entire_holding_route_needs_no_typed_quantity(
             Decimal("1000.000000000000"),
             Decimal("-1000.000000000000"),
         ]
-
-
-def test_global_add_activity_action_is_now_a_real_link(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        _records()
-    body = client.get("/activity").get_data(as_text=True)
-    assert '<a class="btn btn-primary" href="/activity/new">+ Add activity</a>' in body

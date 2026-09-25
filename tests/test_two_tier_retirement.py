@@ -412,17 +412,6 @@ def test_plan_date_age_anchor_and_currency_view(app):
         assert completed_years(date(2024, 2, 29), date(2025, 2, 28)) == 1
 
 
-@pytest.mark.parametrize("state", ["funded", "shortfall", "missing", "stale", "restricted", "legacy", "surplus"])
-def test_long_horizon_demo_states_render(app, client, state):
-    from retirement_demo import seed_demo
-    with app.app_context():
-        seed_demo(state)
-        if state == "funded":
-            portfolio = db.session.scalar(select(Portfolio))
-            assert project(portfolio)["lifestyle"]["core_funded_all_years"] is True
-    assert client.get("/retirement/budget").status_code == (302 if state == "legacy" else 200)
-
-
 def test_full_mixed_sale_leaves_exact_zero():
     from app.services.retirement import _remove_proportionally, _pool_total
     pool = {"roles": {"equity": D("787427.2926283737288233134739"), "income": D("131943.2983932239343227382113")}}

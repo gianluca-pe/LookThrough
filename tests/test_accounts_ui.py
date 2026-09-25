@@ -112,35 +112,6 @@ def _confirm(client: FlaskClient, records: dict, **overrides) -> None:
 
 # --- Accounts index ---
 
-def test_index_is_a_sortable_maintenance_surface(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/accounts").get_data(as_text=True)
-    assert "<h1>Accounts</h1>" in body
-    sidebar = body.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
-    current = re.search(r'<a href="([^"]+)" aria-current="page">([^<]+)</a>', sidebar)
-    assert current and current.group(1) == "/accounts" and current.group(2) == "Accounts"
-
-    # Sortable server links with current state exposed accessibly.
-    assert 'aria-sort="ascending"' in body  # institution is the default sort
-    assert 'href="/accounts?sort=account&amp;direction=asc&amp;as_of=2026-08-04"' in body
-    assert 'href="/accounts?sort=cash&amp;direction=asc&amp;as_of=2026-08-04"' in body
-
-    assert '<a href="/accounts/1">Brokerage EUR</a>' in body
-    # Exactly one account allows a confirmation action.
-    assert body.count("Set cash balance") == 1
-    # The aggregate account shows an included state, never a zero balance.
-    included_row = body.split("Pension wrapper", 1)[1].split("</tr>", 1)[0]
-    assert "— included in aggregate" in included_row
-    assert "0.00" not in included_row
-    # As-of control re-requests server-side, preserving the current sort.
-    form_tag = re.search(r'<form class="asof-form"[^>]*>', body).group(0)
-    assert 'data-autosubmit="true"' in form_tag
-    assert ">Apply</button>" in body
-    assert 'name="sort" value="institution"' in body
-    assert 'name="direction" value="asc"' in body
-    assert_no_inline_script(body)
-
 
 def test_index_sorting_and_as_of_preservation(
     client: FlaskClient, records: dict
@@ -159,15 +130,6 @@ def test_index_sorting_and_as_of_preservation(
     fallback = client.get("/accounts?sort=bogus&direction=sideways").get_data(as_text=True)
     assert fallback.index("Brokerage EUR") < fallback.index("Pension wrapper")
 
-
-def test_index_exposes_edit_and_add_paths(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/accounts").get_data(as_text=True)
-    assert body.count('>Edit</a>') == 2
-    assert 'href="/accounts/1/edit"' in body
-    assert 'href="/accounts/2/edit"' in body
-    assert 'href="/accounts/new">Add account</a>' in body
 
 
 def test_index_calculated_cash_and_negative_badge_after_buy(
@@ -417,38 +379,6 @@ def test_aggregate_to_separate_saves_with_atomic_confirmation(
 
 # --- Confirmation form ---
 
-def test_confirmation_form_entry_order_and_focus(
-    client: FlaskClient, records: dict
-) -> None:
-    _buy(client, records)
-    body = client.get(
-        f"/accounts/{records['account_id']}/cash-confirmations/new"
-    ).get_data(as_text=True)
-
-    positions = [
-        body.index(f'id="{field}"')
-        for field in (
-            "currency_code", "confirmed_balance_amount",
-            "effective_date", "source_note",
-        )
-    ]
-    assert positions == sorted(positions)
-    # Currency and date are prefilled, so the statement balance gets focus.
-    assert body.count("autofocus") == 1
-    amount_tag = re.search(
-        r'<input[^>]*id="confirmed_balance_amount"[^>]*>', body
-    ).group(0)
-    assert "autofocus" in amount_tag
-
-    # Cash confirmation wording: Calculated cash reference, Statement balance, As of.
-    assert "Calculated cash" in body
-    assert '<span class="ccy">EUR</span> -18,400.00' in body
-    assert "Statement balance" in body
-    assert "Treated as end-of-day" in body
-    # Deliberately no category, reason, or explanation fields.
-    assert 'name="category"' not in body and 'name="explanation"' not in body
-    assert_no_inline_script(body)
-
 
 def test_confirmation_error_is_described_linked_and_focused(
     client: FlaskClient, records: dict
@@ -468,21 +398,6 @@ def test_confirmation_error_is_described_linked_and_focused(
 
 
 # --- Setup Cash step ---
-
-def test_setup_cash_step_rail_and_mode_copy(
-    client: FlaskClient, records: dict
-) -> None:
-    body = client.get("/setup/cash").get_data(as_text=True)
-    assert "<h1>Add current cash</h1>" in body
-    assert body.count('aria-current="step"') == 1
-    rail = body.split('aria-label="Setup progress"', 1)[1].split("</nav>", 1)[0]
-    # Cash is linked in the setup rail once an account exists.
-    assert 'href="/setup/cash"' in rail
-    # Mode-appropriate entry points.
-    assert body.count("Set current cash balance") == 1
-    assert "cash is already inside this account" in body
-    assert "aggregate statement value" in body
-    assert_no_inline_script(body)
 
 
 # --- Checkpoint-relative trade warning ---

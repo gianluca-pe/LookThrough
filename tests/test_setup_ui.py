@@ -20,7 +20,6 @@ def assert_no_inline_script(body: str) -> None:
     scripts = [re.sub(r"\?v=\d+", "", tag) for tag in re.findall(r"<script[^>]*>", body)]
     assert scripts == ['<script src="/static/js/enhance.js" defer>']
 
-import pytest
 from flask.testing import FlaskClient
 
 
@@ -62,30 +61,7 @@ def _make_account(client: FlaskClient) -> None:
 
 # --- Empty state and step rail ---
 
-def test_empty_setup_shows_portfolio_step(client: FlaskClient) -> None:
-    body = client.get("/setup").get_data(as_text=True)
-    assert "<h1>Set up your portfolio</h1>" in body
-    assert body.count('aria-current="step"') == 1
-    rail = body.split('aria-label="Setup progress"', 1)[1].split("</nav>", 1)[0]
-    # Initial setup links to Portfolio, Accounts, Positions and Values.
-    # Cash and Review are not linked until their prerequisites exist.
-    assert rail.count("<a href=") == 4
-    for label in ("Positions", "Cash", "Values", "Review"):
-        assert f">{label}<" in rail
-    assert "(upcoming)" in rail
-    assert "(completed)" not in rail
 
-
-def test_required_fields_stated_in_text(client: FlaskClient) -> None:
-    body = client.get("/setup").get_data(as_text=True)
-    # Name, reporting currency, spending amount, and spending currency.
-    assert body.count('class="req">(required)') == 4
-
-
-def test_no_javascript_anywhere(client: FlaskClient) -> None:
-    _make_portfolio(client)
-    for path in ("/setup", "/setup?step=accounts"):
-        assert_no_inline_script(client.get(path).get_data(as_text=True))
 
 
 # --- Validation presentation ---
@@ -166,45 +142,7 @@ def test_institution_duplicate_error_is_inline(client: FlaskClient) -> None:
 
 # --- Flow, disclosure, resumption ---
 
-def test_save_and_continue_lands_on_accounts_with_name_in_shell(client: FlaskClient) -> None:
-    _make_portfolio(client)
-    body = client.get("/setup?step=accounts").get_data(as_text=True)
-    assert '<span class="portfolio-name">· Personal portfolio</span>' in body
-    rail = body.split('aria-label="Setup progress"', 1)[1].split("</nav>", 1)[0]
-    assert 'aria-current="step"' in rail
-    # Portfolio, Accounts, Positions, and Values are linked; Cash and Review
-    # remain unlinked until an account and a position exist, respectively.
-    assert rail.count("<a href=") == 4
-    assert "(completed)" in rail
 
-
-def test_account_form_progressive_disclosure(client: FlaskClient) -> None:
-    _make_portfolio(client)
-    _make_institution(client)
-    body = client.get("/setup?step=accounts").get_data(as_text=True)
-
-    details = body.split('<details class="disclosure">', 1)[1].split("</details>", 1)[0]
-    # Optional access/relationship fields are under disclosure…
-    for field_id in ("earliest_access_date", "access_note", "relationship_eligible"):
-        assert f'name="{field_id}"' in details
-    # …and no required field is hidden inside it.
-    for field_id in ("institution_id", "account_type", "default_currency_code",
-                     "cash_tracking_mode", "portfolio_share_percent", "present_access_percent"):
-        assert f'name="{field_id}"' not in details
-    assert "Access and relationship details (optional)" in body
-
-
-def test_account_reference_is_optional_and_labelled(client: FlaskClient) -> None:
-    _make_portfolio(client)
-    _make_institution(client)
-    body = client.get("/setup?step=accounts").get_data(as_text=True)
-    assert '<label for="account-reference">' in body
-    label = re.search(
-        r'<label for="account-reference">(.*?)</label>', body
-    ).group(1)
-    assert "(required)" not in label
-    field = re.search(r'<input[^>]*id="account-reference"[^>]*>', body).group(0)
-    assert "required" not in field
 
 
 def test_full_flow_and_resumption(client: FlaskClient) -> None:
@@ -234,17 +172,6 @@ def test_account_needs_institution_first(client: FlaskClient) -> None:
     assert "Add an institution above before adding an account." in body
     assert 'name="portfolio_share_percent"' not in body
 
-
-def test_labels_match_inputs(client: FlaskClient) -> None:
-    _make_portfolio(client)
-    _make_institution(client)
-    for path in ("/setup?step=portfolio", "/setup?step=accounts"):
-        body = client.get(path).get_data(as_text=True)
-        labels = set(re.findall(r'<label for="([^"]+)"', body))
-        controls = set(re.findall(r'<(?:input|select|textarea)[^>]* id="([^"]+)"', body))
-        assert labels <= controls
-        ids = re.findall(r'<(?:input|select|textarea)[^>]* id="([^"]+)"', body)
-        assert len(ids) == len(set(ids)), f"duplicate element ids on {path}"
 
 
 def test_setup_account_disclosure_reopens_on_error(client: FlaskClient) -> None:

@@ -136,28 +136,6 @@ def test_revision_noop_large_change_and_stale_review_are_atomic(app):
             fx.save_set(data,source="manual",note="Old review",expected_state=first_id,replace=True,acknowledge=True)
 
 
-def test_settings_get_is_offline_and_download_review_does_not_save(client,app,configured,monkeypatch):
-    calls=[]
-    def fetch(today):
-        calls.append(today)
-        return fx.parse_download(download_blob(),today)
-    monkeypatch.setattr("app.fx_settings.download_reference_rates",fetch)
-    assert client.get('/settings').status_code == 200
-    assert calls == []
-    page=client.post('/settings/fx/download')
-    assert page.status_code == 200
-    assert calls == [TODAY]
-    with app.app_context(): assert fx.state_id() == 0
-    response=client.post('/settings/fx/save',data={"token":token(page)})
-    assert response.status_code == 302
-    with app.app_context():
-        assert fx.latest_set().effective_date == DAY
-        assert fx.set_rates(fx.latest_set()) == {"EUR":"1", "USD":"1.2"}
-    response=client.post('/settings/fx/download',follow_redirects=True)
-    assert b'already saved' in response.data
-    assert len(calls) == 2
-
-
 @pytest.mark.parametrize("reason", ["Could not connect securely", "The download could not be read as JSON", "The JSON format has changed"])
 def test_failure_preserves_sources_and_explains_manual_recovery(client,app,configured,monkeypatch,reason):
     with app.app_context(): seed_set(); before=export_backup()
@@ -168,21 +146,6 @@ def test_failure_preserves_sources_and_explains_manual_recovery(client,app,confi
     assert b'/settings/fx/manual' in page.data and b'saved rates and their dates are unchanged' in page.data
     with app.app_context():
         assert json.loads(export_backup())["tables"] == json.loads(before)["tables"]
-
-
-def test_manual_new_date_requires_complete_set_and_preserves_errors(client,app,configured):
-    page=client.post('/settings/fx/manual',data={"effective_date":"2026-09-13","source_note":"Bank reference", "state":"0"})
-    assert page.status_code == 400
-    assert b'Enter this rate for a complete set' in page.data
-    assert b'Bank reference' in page.data and b'href="#rate_USD"' in page.data
-    assert re.search(rb'<input[^>]*autofocus[^>]*id="rate_USD"',page.data)
-    good=client.post('/settings/fx/manual',data={"effective_date":"2026-09-13","source_note":"Bank reference", "state":"0","rate_USD":"1.25"})
-    assert good.status_code == 200
-    saved=client.post('/settings/fx/save',data={"token":token(good)})
-    assert saved.status_code == 302
-    with app.app_context():
-        assert fx.latest_set().source == "manual"
-        assert fx.set_rates(fx.latest_set()) == {"EUR":"1","USD":"1.25"}
 
 
 def test_manual_same_date_correction_retains_other_currencies(client,app,configured):

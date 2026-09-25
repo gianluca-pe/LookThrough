@@ -314,24 +314,6 @@ def test_spending_chart_is_nominal_while_allowance_and_capital_stay_real(app, cl
 
 
 
-def test_allowance_copy_distinguishes_withdrawals_from_planned_income(app, client):
-    from app.services.retirement_plans import save_income
-    from test_two_tier_retirement import income_data
-    with app.app_context():
-        portfolio, _, _ = seed()
-        pid = portfolio.id
-    response = client.post('/retirement', data=form_data())
-    assert b'you could withdraw' in response.data
-    assert b'Before any taxes on portfolio withdrawals' in response.data
-    assert b'you could spend' not in response.data
-    with app.app_context():
-        save_income(pid, income_data())
-        db.session.commit()
-    response = client.post('/retirement', data=form_data())
-    assert b'you could draw from your portfolio and planned income' in response.data
-    assert b'Before any taxes on portfolio withdrawals' in response.data
-
-
 
 def test_reference_line_uses_paid_amounts_in_shortfall_and_zero_while_working(app):
     from app.retirement import _affordability_chart

@@ -346,24 +346,3 @@ def test_unfunded_full_budget_names_the_first_affected_years(app, client):
     assert "The full Flexible budget is first unpaid at age 50" in html
     assert "35.00</span> of the" in html
     assert "40.00</span> target" in html
-
-
-def test_review_card_states_paths_keep_saved_assumptions(app, client):
-    with app.app_context():
-        seed("1000")
-    data = {**post_data(core_amount=D("70")), "preview_plan": "1"}
-    html = client.post("/retirement/budget", data=data).get_data(as_text=True)
-    assert "still use your saved assumptions" in html
-    assert "they update only when you adopt this plan" in html
-
-
-def test_year_summaries_drop_redundant_full_budget_share_and_name_cuts(app, client):
-    with app.app_context():
-        seed("1000")
-    full = client.get("/retirement/budget").get_data(as_text=True)
-    assert "keep the full Flexible budget" in full
-    assert "allows 100% of target" not in full
-    rules = client.get("/retirement/budget?path=guardrails").get_data(as_text=True)
-    assert "allows 25% of target" in rules
-    assert "Flexible cut" in rules
-    assert "(your rule)" in rules

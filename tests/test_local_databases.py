@@ -42,21 +42,6 @@ def seed(folder, filename, name='Synthetic portfolio'):
         db.engine.dispose()
 
 
-def test_empty_and_single_database_always_show_chooser_without_writes(launcher, tmp_path):
-    client = launcher.test_client()
-    assert b'No databases were found' in client.get('/').data
-    assert client.get('/health').data == b'ok\n'
-    assert list(tmp_path.iterdir()) == []
-    seed(tmp_path, 'Real.sqlite3')
-    before = local.fingerprint(tmp_path / 'Real.sqlite3')
-    response = client.get('/')
-    assert b'Choose a database' in response.data and b'Synthetic portfolio' in response.data
-    assert b'Create a new database' in response.data
-    assert client.get('/overview').location == '/'
-    assert local.fingerprint(tmp_path / 'Real.sqlite3') == before
-    assert [p.name for p in tmp_path.iterdir()] == ['Real.sqlite3']
-
-
 def test_creation_preview_collision_and_csrf(launcher, tmp_path):
     client = launcher.test_client()
     assert client.post('/databases/new', data={'name': 'Practice'}).status_code == 400

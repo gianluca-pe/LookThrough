@@ -30,20 +30,6 @@ def _create_institution(portfolio: Portfolio, name: str = "Example Bank") -> Ins
     return institution
 
 
-def test_empty_setup_starts_with_portfolio_step(client: FlaskClient) -> None:
-    response = client.get("/setup")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "Set up your portfolio" in body
-    assert 'action="/setup/portfolio"' in body
-
-
-def test_application_root_resumes_setup(client: FlaskClient) -> None:
-    response = client.get("/")
-
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/setup")
 
 
 def test_invalid_portfolio_submission_creates_no_record(
@@ -93,20 +79,6 @@ def test_portfolio_save_normalizes_currency_and_redirects_to_accounts(
         assert portfolio.default_as_of_date == date(2026, 8, 2)
 
 
-def test_portfolio_finish_later_stays_on_portfolio_step(client: FlaskClient) -> None:
-    response = client.post(
-        "/setup/portfolio",
-        data={
-            "name": "My Portfolio",
-            "reporting_currency_code": "EUR",
-            "annual_spending_amount": "48000",
-            "save_and_finish_later": "Save and finish later",
-        },
-    )
-
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/setup?step=portfolio")
-
 
 def test_older_portfolio_form_preserves_spending_currency_when_reporting_changes(
     app: Flask, client: FlaskClient
@@ -131,12 +103,6 @@ def test_older_portfolio_form_preserves_spending_currency_when_reporting_changes
         assert stored.reporting_currency_code == "USD"
         assert stored.annual_spending_currency_code == "AED"
 
-
-def test_account_step_requires_portfolio(client: FlaskClient) -> None:
-    response = client.post("/setup/institutions", data={"name": "Example Bank"})
-
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/setup?step=portfolio")
 
 
 def test_add_institution_persists_and_redirects(

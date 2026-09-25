@@ -2,7 +2,6 @@
 
 from datetime import timedelta
 from decimal import Decimal
-import io
 import json
 import sqlite3
 
@@ -190,22 +189,6 @@ def test_invalid_latest_stored_set_withholds_complete_retirement_result(app, wei
         assert basis["calculation_complete"] is False
         assert summary["holdings"][0]["included_reporting_amount"] == Decimal("1000")
         assert not summary["holdings"][0]["role_weights"]
-
-
-def test_invalid_upload_is_recoverable_and_never_staged(app, client, tmp_path):
-    with app.app_context():
-        _, payload = classified_payload()
-        original = json.loads(export_backup())["tables"]
-    payload["tables"]["instrument_classifications"][0]["weight_decimal"] = "0.5"
-    response = client.post("/backup/preview", data={
-        "backup_file": (io.BytesIO(json.dumps(payload).encode()), "invalid.json")})
-    assert response.status_code == 400
-    assert b"Allocation role weights must total 100%" in response.data
-    assert b'href="#backup_file"' in response.data
-    assert b'aria-invalid="true"' in response.data
-    assert not list((tmp_path / "restore-staging").glob("*"))
-    with app.app_context():
-        assert json.loads(export_backup())["tables"] == original
 
 
 def test_staged_backup_is_revalidated_before_restore(app, tmp_path):

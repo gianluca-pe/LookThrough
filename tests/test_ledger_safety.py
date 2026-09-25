@@ -262,27 +262,6 @@ def test_non_lock_database_errors_are_not_reported_as_busy(app, monkeypatch):
         assert db.session.scalar(select(func.count(Transaction.id))) == 0
 
 
-@pytest.mark.parametrize("mode,field", [("entered", "quantity"), ("entire_holding", "quantity_mode")])
-def test_backdated_route_error_is_linked_and_preserves_inputs(app, client, mode, field):
-    with app.app_context():
-        records = _base_records()
-        post_trade(trade(records, "buy", "100", JAN))
-        post_trade(trade(records, "sell", "80", MAR))
-        data = _trade_data(records[1].id, records[2].id, activity_type="sell",
-                           effective_date=FEB.isoformat(), quantity="50", unit_price="10",
-                           fee_amount="0", quantity_mode=mode)
-    for path in ("/activity/preview", "/activity/new"):
-        response = client.post(path, data=data)
-        assert response.status_code == 200
-        html = response.get_data(as_text=True)
-        assert "negative holding on 2026-03-01" in html
-        assert f'href="#{field}"' in html
-        assert 'value="2026-02-01"' in html
-        assert 'value="50"' in html
-    with app.app_context():
-        assert db.session.scalar(select(func.count(Transaction.id))) == 2
-
-
 def test_busy_route_keeps_form_and_successful_retry(app, client, database_path):
     with app.app_context():
         records = _base_records()

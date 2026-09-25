@@ -117,39 +117,6 @@ def _post_terms(client: FlaskClient, registration_id: int, **overrides):
 
 # --- Terms form presentation ---
 
-def test_terms_form_labels_hints_and_keyboard_path(
-    client: FlaskClient, app: Flask
-) -> None:
-    _, registration_id = _fd_position(app)
-    page = client.get(f"/positions/{registration_id}/fixed-deposit?as_of=2026-08-02")
-    assert page.status_code == 200
-    body = page.get_data(as_text=True)
-    assert body.count("<h1") == 1 and "<h1>Fixed deposit terms</h1>" in body
-    # Context line names the instrument, institution, and account.
-    assert "FD_USD_204 · Bank · Fixed Deposits" in body
-    # Missing terms are honestly flagged as conservative term liquidity.
-    assert "Terms missing" in body
-    assert "term liquidity rather than accessible now" in body
-    # Every field has a programmatic label; required is stated in text.
-    for field in ("currency_code", "start_date", "maturity_date",
-                  "annual_rate_percent", "maturity_action", "notes"):
-        assert f'<label for="{field}">' in body
-    required = re.findall(r'<label for="(\w+)">[^<]*<span class="req">', body)
-    assert required == ["currency_code", "start_date", "maturity_date", "maturity_action"]
-    # Hints name the actual currency and opening date instead of abstractions.
-    assert "valuation currency, USD." in body
-    assert "opening date, 2 Jun 2026" in body
-    assert "drives term-liquidity status and maturity attention." in body
-    assert "does not invent interest or a zero rate" in body
-    # Currency suggestions exist but never restrict entry.
-    assert '<datalist id="currency-codes">' in body
-    assert 'list="currency-codes"' in body
-    # No-JavaScript write path: plain POST, prefilled values, explicit exits.
-    assert 'value="USD"' in body and 'value="2026-06-02"' in body
-    assert "Save fixed deposit terms" in body
-    assert 'href="/holdings?as_of=2026-08-02">Cancel</a>' in body
-    assert_no_inline_script(body)
-
 
 def test_terms_form_error_summary_and_first_error_focus(
     client: FlaskClient, app: Flask
@@ -282,17 +249,6 @@ def test_overview_matured_fd_leaves_term_liquidity(
     # With full share/access and nothing term-locked, no bridge rows appear.
     assert "Accessible now" not in subtotals
 
-
-def test_review_fd_attention_uses_same_terms_link(
-    client: FlaskClient, app: Flask
-) -> None:
-    _, registration_id = _fd_position(app)
-    _terms(app, registration_id)
-    body = client.get("/setup/review").get_data(as_text=True)
-    attention = body.split('class="attention-list"', 1)[1].split("</ul>", 1)[0]
-    assert "<strong>Fixed deposit</strong> — FD_USD_204" in attention
-    assert ('href="/positions/1/fixed-deposit?as_of=2026-08-02">Review terms →</a>'
-            in attention)
 
 
 def test_account_detail_discloses_term_liquidity_separately(

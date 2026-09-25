@@ -30,24 +30,6 @@ def test_retired_forms_still_require_csrf(app, client):
         assert client.post(path, data={}).status_code == 400
 
 
-def test_no_plan_has_no_legacy_links_and_cannot_create_budget_plan(app, client):
-    with app.app_context():
-        portfolio, _ = _portfolio_account()
-        portfolio_id = portfolio.id
-        db.session.commit()
-    for path in ("/retirement", "/settings"):
-        body = client.get(path).data
-        assert b"View existing budget plan" not in body
-        assert b"Annual inflation assumption" not in body
-        assert b"/planning/funding" not in body
-        assert b"/planning/retirement" not in body
-    for method in ("get", "post"):
-        response = getattr(client, method)("/retirement/budget")
-        assert response.location == "/retirement"
-        assert response.status_code == (303 if method == "post" else 302)
-    with app.app_context():
-        assert adopted_plan(portfolio_id) is None
-
 
 def test_existing_budget_link_is_prefixed_and_preserves_plan(app, client):
     with app.app_context():

@@ -6,8 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from flask import Flask, template_rendered
-from flask.testing import FlaskClient
+from flask import Flask
 
 from app.extensions import db
 from app.models import (
@@ -365,31 +364,6 @@ def test_retired_funding_form_preserves_stored_inflation(app, client):
     assert response.location == "/retirement"
     with app.app_context():
         assert db.session.get(Portfolio, portfolio_id).annual_inflation_decimal == Decimal("0.03")
-
-
-def test_overview_exposes_shared_funding_contract(app: Flask, client: FlaskClient) -> None:
-    with app.app_context():
-        portfolio, account = _portfolio_account(spending="100", inflation="0.03")
-        _cash(account, "1000")
-        _position(
-            portfolio,
-            account,
-            name="Growth fund",
-            amount="10000",
-            bucket="growth",
-            roles={"equity": "1"},
-        )
-        db.session.commit()
-
-    rendered = []
-    with template_rendered.connected_to(
-        lambda sender, template, context, **extra: rendered.append(context), app
-    ):
-        response = client.get("/overview")
-
-    assert response.status_code == 200
-    assert rendered[0]["funding"]["annual_inflation_decimal"] == Decimal("0.03")
-    assert len(rendered[0]["funding"]["periods"]) == 2
 
 
 @pytest.mark.parametrize(

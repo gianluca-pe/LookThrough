@@ -32,8 +32,15 @@ The current release is v1.0.0-beta.2.
 
 ## Delivery
 
-- Preserve tests that establish financial and data-integrity behavior. Add focused
-  regression cases for changed calculations, validation and material failures.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex
+  features work. At the end of E2E tests, produce a verifiable and repeatable
+  artifact.
+- Never write unit tests after you write code.
+- If you must test a system in isolation, first write down all the ways it could
+  fail, then write the code.
+- Preserve tests that establish financial and data-integrity behavior when E2E
+  tests cannot catch those failures. For changed calculations, validation and
+  material failures, choose tests that exercise a real failure path.
 - For schema/backup changes verify historical upgrades, failed-write recovery and
   backup round trips. Do not remove migration compatibility during cosmetic cleanup.
 - Verify changed UI with keyboard, linked errors/focus, no-JavaScript recovery and

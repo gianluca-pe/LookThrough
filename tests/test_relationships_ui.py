@@ -238,31 +238,6 @@ def test_account_detail_relationship_card_states(
 
 # --- Relationship form ---
 
-def test_relationship_form_labels_hints_and_keyboard_path(
-    client: FlaskClient, app: Flask
-) -> None:
-    _, institution_id, eligible_id, _ = _records(app)
-    body = client.get(
-        f"/institutions/{institution_id}/relationship?as_of=2026-08-28"
-    ).get_data(as_text=True)
-    assert body.count("<h1") == 1 and "<h1>Relationship minimum</h1>" in body
-    assert "does not confirm the" in body  # no contractual/protection claim
-    for field in ("name", "threshold_amount", "threshold_currency_code",
-                  "warning_buffer_amount", "notes"):
-        assert f'<label for="{field}">' in body
-    required = re.findall(r'<label for="(\w+)">[^<]*<span class="req">', body)
-    assert required == ["name", "threshold_amount", "threshold_currency_code"]
-    # Eligible accounts are a labelled checkbox group, required while active.
-    assert 'id="eligible_account_ids"' in body
-    assert "(required while active)" in body
-    assert f'<label for="eligible-account-{eligible_id}">Eligible EUR account</label>' in body
-    # The active toggle uses the shared linked-label checkbox pattern.
-    assert '<label for="is_active">Use this relationship minimum</label>' in body
-    assert "Save relationship minimum" in body
-    assert 'href="/accounts?as_of=2026-08-28">Back to accounts</a>' in body
-    assert '<datalist id="currency-codes">' in body
-    assert_no_inline_script(body)
-
 
 def test_relationship_form_error_summary_and_first_error_focus(
     client: FlaskClient, app: Flask

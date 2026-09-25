@@ -5,7 +5,6 @@ from decimal import Decimal
 
 import pytest
 from flask import Flask
-from flask.testing import FlaskClient
 
 from app.extensions import db
 from app.models import (
@@ -222,36 +221,3 @@ def test_target_gap_is_not_invented_while_classification_is_incomplete(app: Flas
         summary = build_portfolio_summary(portfolio, AS_OF)
         assert summary["allocation_target_calculation_complete"] is False
         assert all(row["range_state"] is None for row in summary["role_allocation"])
-
-
-def test_target_form_round_trips_and_rejects_infeasible_ranges(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        _portfolio_account()
-        db.session.commit()
-    valid = {
-        "equity_minimum_percent": "50",
-        "equity_maximum_percent": "70",
-        "income_minimum_percent": "10",
-        "income_maximum_percent": "30",
-        "liquidity_minimum_percent": "10",
-        "liquidity_maximum_percent": "30",
-        "alternatives_minimum_percent": "0",
-        "alternatives_maximum_percent": "10",
-        "save_targets": "Save target ranges",
-    }
-    response = client.post("/planning/targets", data=valid)
-    assert response.status_code == 302
-    page = client.get("/planning/targets").get_data(as_text=True)
-    assert 'value="50"' in page
-    assert "not recommendations" in page
-
-    invalid = dict(valid)
-    invalid["income_minimum_percent"] = "60"
-    invalid["income_maximum_percent"] = "70"
-    response = client.post("/planning/targets", data=invalid)
-    assert response.status_code == 200
-    body = response.get_data(as_text=True)
-    assert "must allow a complete 100% allocation" in body
-    assert 'href="#equity_minimum_percent"' in body

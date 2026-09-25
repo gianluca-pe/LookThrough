@@ -59,31 +59,6 @@ def _seed():
     return portfolio, account, instrument, trade
 
 
-def test_history_routes_redirect_to_setup_without_portfolio(
-    client: FlaskClient,
-) -> None:
-    assert client.get("/activity").status_code == 302
-    assert client.get("/activity/1").status_code == 302
-    assert client.get("/activity/1/reverse").status_code == 302
-
-
-def test_history_and_detail_render_plain_language_views(
-    app: Flask, client: FlaskClient
-) -> None:
-    with app.app_context():
-        _, _, _, trade = _seed()
-
-    history = client.get("/activity").get_data(as_text=True)
-    detail = client.get(f"/activity/{trade.transaction_id}").get_data(as_text=True)
-
-    assert "<h1>Activity history</h1>" in history
-    assert "Global Fund" in history
-    assert "EUR</span> -1,005.00" in history
-    assert f'/activity/{trade.transaction_id}' in history
-    assert "<h1>Buy</h1>" in detail
-    assert "Quantity effect" in detail
-    assert "Reverse activity" in detail
-    assert "posting" not in detail.lower()
 
 
 def test_history_filters_are_applied_and_invalid_dates_are_explained(

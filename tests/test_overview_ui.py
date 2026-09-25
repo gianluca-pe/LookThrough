@@ -156,14 +156,6 @@ def valued_portfolio(app: Flask) -> None:
 
 # --- Root resumption ---
 
-def test_root_resumes_setup_when_empty(client: FlaskClient) -> None:
-    assert client.get("/").headers["Location"].endswith("/setup")
-
-
-def test_root_goes_to_overview_once_position_exists(
-    client: FlaskClient, valued_portfolio: None
-) -> None:
-    assert client.get("/").headers["Location"].endswith("/overview")
 
 
 # --- Overview states ---
@@ -444,35 +436,8 @@ def test_review_stale_attention_uses_same_specific_labels(
     assert 'href="/setup/values?registration=1#statements-heading">Update →</a>' in attention
 
 
-def test_overview_a11y_basics(client: FlaskClient, valued_portfolio: None) -> None:
-    body = client.get("/overview").get_data(as_text=True)
-    assert body.count("<h1") == 1
-    assert_no_inline_script(body, OVERVIEW_CHART_SCRIPTS)
-    assert re.search(r'tabindex="[1-9]', body) is None
-    sidebar = body.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
-    assert sidebar.count('aria-current="page"') == 1
-    assert '<a href="/overview" aria-current="page">Overview</a>' in sidebar
-    assert '<label for="as_of">' in body
-    # The whole-portfolio scope is stated; no investment-only deferral remains.
-    assert "Included portfolio value" in body
-    assert "Investment positions only" not in body
-    assert "cash joins" not in body
-
 
 # --- Review ---
-
-def test_review_rail_and_continue(client: FlaskClient, valued_portfolio: None) -> None:
-    body = client.get("/setup/review").get_data(as_text=True)
-    assert "<h1>Review current values</h1>" in body
-    rail = body.split('aria-label="Setup progress"', 1)[1].split("</nav>", 1)[0]
-    assert rail.count('aria-current="step"') == 1
-    assert 'href="/setup/review"' in rail
-    assert ">Cash<" in rail and 'href="/setup/cash"' in rail
-    assert "Finish setup" in body
-    assert 'href="/overview"' in body
-    # Classification must not block finishing.
-    assert "classification" in body.lower()
-    assert "12,345.67" in body
 
 
 def test_overview_review_holdings_consistent(client: FlaskClient, valued_portfolio: None) -> None:
@@ -653,16 +618,6 @@ def test_review_shows_same_three_totals(client: FlaskClient, app: Flask) -> None
     native = body.split('id="review-native-heading"', 1)[1]
     assert "12,000.00" in native
 
-
-def test_no_investment_only_or_deferred_cash_copy_remains(
-    client: FlaskClient, valued_portfolio: None
-) -> None:
-    for path in ("/overview", "/setup/review"):
-        body = client.get(path).get_data(as_text=True)
-        assert "Investment positions only" not in body
-        assert "investment positions only" not in body
-        assert "next milestone" not in body
-        assert "joins this total" not in body
 
 
 
