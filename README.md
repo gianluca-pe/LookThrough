@@ -30,7 +30,7 @@ entry remains available.
 
 ## Install and run
 
-Python 3.12+ is required. macOS with Python 3.14.7 is the verified environment for
+Python 3.12+ is required. macOS with Python 3.14.8 is the verified environment for
 this baseline; other platforms/Python versions have not been newly certified.
 From this folder:
 
@@ -43,6 +43,8 @@ python3 -m venv .venv
 `requirements.txt` expresses supported dependency ranges. The constraints file
 pins the versions used for this release, including test dependencies. Recreate the
 virtual environment after moving the project; do not copy someone else's .venv.
+If `./run.sh` reports a missing or broken virtual environment (for example after
+a system Python upgrade), it prints the commands to set up or recreate it.
 The launcher runs Waitress through `.venv/bin/python -m waitress`, avoiding an
 obsolete interpreter path in a generated `waitress-serve` script.
 
