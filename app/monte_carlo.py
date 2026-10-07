@@ -4,17 +4,17 @@ from collections import OrderedDict
 from threading import Lock
 import json
 
-from flask import Blueprint, Response, abort, current_app, redirect, render_template, request, stream_with_context, url_for
+from flask import Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request, stream_with_context, url_for
 from itsdangerous import BadData, URLSafeSerializer
 from werkzeug.datastructures import MultiDict
 
-from app.retirement import _affordability_review, _basis_digest
-from app.retirement_forms import MonteCarloForm, RetirementAffordabilityForm
+from app.retirement import _basis_digest, _read_affordability_review, _review_flexible, _review_is_saved
+from app.retirement_forms import MonteCarloForm, MonteCarloAllocationForm, RetirementAffordabilityForm
 from app.services.retirement_affordability import prepare_affordability, solve_affordability
-from app.services.retirement_plans import plan_incomes
+from app.services.retirement_plans import plan_incomes, adopted_plan
 from app.services.retirement_monte_carlo import (
     MODEL_VERSION, PATH_COUNT, ROLES, MonteCarloValidationError,
-    comparison_steps, inspect_path, prepare_experiment,
+    comparison_steps, inspect_path, prepare_experiment, allocation_feedback,
 )
 from app.setup import _current_portfolio
 from app.template_filters import money_amount
@@ -26,15 +26,23 @@ def _serializer():
     return URLSafeSerializer(current_app.secret_key, salt='retirement-monte-carlo')
 
 
+def _allocation_feedback(fields):
+    form = MonteCarloAllocationForm(fields, meta={'csrf': False})
+    if not form.validate():
+        return {'state': 'invalid', 'total': None, 'difference': None, 'errors': form.errors,
+                'message': 'Enter a valid percentage from 0 to 100 in every role, using at most six decimal places, to calculate the total. Use 0 for no allocation.'}
+    return allocation_feedback(form.percentages())
+
+
+@monte_carlo_blueprint.post('/allocation-check')
+def allocation_check():
+    response = jsonify(_allocation_feedback(request.form))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 def _load_review(token, portfolio):
-    try:
-        review = _affordability_review().loads(token)
-    except BadData:
-        abort(400, 'Open this experiment from a reviewed retirement projection.')
-    if not isinstance(review, dict) or not isinstance(review.get('fields'), dict):
-        abort(400)
-    if review.get('portfolio_id') != portfolio.id:
-        abort(404)
+    review = _read_affordability_review(token, portfolio)
     form = RetirementAffordabilityForm(MultiDict(review['fields']), meta={'csrf': False})
     if not form.validate():
         abort(400)
@@ -53,9 +61,11 @@ def _load_review(token, portfolio):
     ]
     digest = _basis_digest({'basis': basis, 'sources': evidence})
     solved = solve_affordability(basis)
-    if solved['flexible_amount'] is None:
-        raise MonteCarloValidationError('Review a complete retirement projection with a calculated Flexible allowance first.')
-    return basis, summary, solved['flexible_amount'], digest, evidence['income_assumptions']
+    flexible = _review_flexible(review, basis, solved)
+    if flexible is None:
+        raise MonteCarloValidationError('Review a complete retirement projection with a chosen Flexible budget first.')
+    return (basis, summary, solved['flexible_amount'], digest, evidence['income_assumptions'], flexible,
+            _review_is_saved(form, flexible, adopted_plan(portfolio.id), portfolio))
 
 
 def _chart(result):
@@ -144,8 +154,8 @@ def _workspace(report=False):
         loaded = _load_review(review_token, portfolio)
         if loaded is None:
             return render_template('retirement/changed.html', portfolio_name=portfolio.name), 409
-        basis, summary, allowance, digest, income_assumptions = loaded
-        experiment = prepare_experiment(basis, summary, allowance)
+        basis, summary, allowance, digest, income_assumptions, reviewed_flexible, review_is_saved = loaded
+        experiment = prepare_experiment(basis, summary, reviewed_flexible)
     except MonteCarloValidationError as error:
         return render_template('retirement/monte_carlo_unavailable.html', error=str(error), **base_context), 422
     if payload and payload.get('source_digest') != digest:
@@ -156,7 +166,7 @@ def _workspace(report=False):
                 for role, value in experiment['current_percentages'].items()}
     largest = max(defaults, key=defaults.get)
     defaults[largest] += Decimal('100') - sum(defaults.values(), Decimal('0'))
-    initial = {'review': review_token, 'source_digest': digest, 'flexible_amount': str(allowance),
+    initial = {'review': review_token, 'source_digest': digest, 'flexible_amount': str(reviewed_flexible),
                **{role + '_percent': str(value) for role, value in defaults.items()}}
     if payload:
         if not isinstance(payload.get('fields'), dict):
@@ -167,9 +177,6 @@ def _workspace(report=False):
     form = MonteCarloForm() if request.method == 'POST' else MonteCarloForm(MultiDict(initial))
     if request.method == 'POST' or payload:
         valid = form.validate() if request.method == 'POST' else MonteCarloForm(MultiDict(initial), meta={'csrf': False}).validate()
-        if valid and form.flexible_amount.data > allowance:
-            form.flexible_amount.errors.append('Choose the calculated allowance or a lower amount, including zero.')
-            valid = False
         if form.source_digest.data != digest:
             return render_template('retirement/changed.html', portfolio_name=portfolio.name), 409
         if payload and not valid:
@@ -207,7 +214,9 @@ def _workspace(report=False):
                                    error='This comparison could not be calculated. No outcome frequencies are available. Review the assumptions and try again.', **base_context), 422
     return render_template('retirement/monte_carlo_details.html' if report else 'retirement/monte_carlo.html',
                            form=form, experiment=experiment, basis=basis, summary=summary,
+                           allocation_feedback=_allocation_feedback(MultiDict({role + '_percent': form[role + '_percent']._value() for role in ROLES})),
                            allowance=allowance, result=result, chart=_chart(result) if result else None,
+                           reviewed_flexible=reviewed_flexible, review_is_saved=review_is_saved,
                            income_assumptions=income_assumptions,
                            run_token=run_token, paths=paths, path_number=path_number, path_error=path_error,
                            **base_context), 422 if form.errors or path_error else 200

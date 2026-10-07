@@ -119,6 +119,7 @@ class RetirementScenarioForm(FlaskForm):
 
 
 class RetirementAffordabilityForm(FlaskForm):
+    review = HiddenField()
     base_date = DateField("Portfolio and purchasing-power date", validators=[InputRequired()])
     currency_code = StringField("Planning currency", validators=[InputRequired(), Length(min=3, max=3)])
     current_age_years = IntegerField("Your age at this date", validators=[InputRequired(), NumberRange(min=0, max=120)])
@@ -140,7 +141,7 @@ class RetirementAffordabilityForm(FlaskForm):
         for field in self:
             if field.name.endswith("_percent"):
                 values[field.name.removesuffix("_percent") + "_decimal"] = field.data / Decimal("100") if field.data is not None else None
-            elif field.name not in {"csrf_token", "project", "save_plan"}:
+            elif field.name not in {"csrf_token", "project", "save_plan", "review"}:
                 values[field.name] = field.data
         return values
 
@@ -165,22 +166,50 @@ class RetirementAffordabilityForm(FlaskForm):
         return valid
 
 
-class MonteCarloForm(FlaskForm):
+class RetirementLifestyleForm(FlaskForm):
     review = HiddenField(validators=[InputRequired()])
-    source_digest = HiddenField(validators=[InputRequired()])
-    flexible_amount = number("Annual Flexible to test — today's USD")
+    currency_code = HiddenField(validators=[InputRequired()])
+    flexible_amount = number("My annual Flexible spending — today's money")
+    review_lifestyle = SubmitField("Review this lifestyle")
+    use_maximum = SubmitField("Use calculated maximum")
+
+    def validate(self, extra_validators=None):
+        reject_nonfinite(self)
+        return super().validate(extra_validators=extra_validators)
+
+
+class RetirementAdoptionForm(FlaskForm):
+    acknowledge_failure = BooleanField("I understand this lifestyle does not meet all the modelled spending and final-capital objectives.")
+    save_plan = SubmitField("Save as my plan")
+
+
+class MonteCarloAllocationForm(FlaskForm):
     equity_percent = number("Equity (%)", 100)
     income_percent = number("Income (%)", 100)
     liquidity_percent = number("Liquidity (%)", 100)
     alternatives_percent = number("Alternatives (%)", 100)
-    run_comparison = SubmitField("Run comparison")
 
     def percentages(self):
         return {role: self[role + '_percent'].data for role in ('equity', 'income', 'liquidity', 'alternatives')}
 
     def validate(self, extra_validators=None):
-        from app.services.retirement_monte_carlo import allocation_weights, MonteCarloValidationError
         reject_nonfinite(self)
+        return super().validate(extra_validators=extra_validators)
+
+
+class MonteCarloForm(MonteCarloAllocationForm):
+    currency_code = HiddenField(default='USD')
+    review = HiddenField(validators=[InputRequired()])
+    source_digest = HiddenField(validators=[InputRequired()])
+    flexible_amount = number("Annual Flexible to test — today's USD")
+    run_comparison = SubmitField("Run comparison")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.currency_code.data = 'USD'
+
+    def validate(self, extra_validators=None):
+        from app.services.retirement_monte_carlo import allocation_weights, MonteCarloValidationError
         valid = super().validate(extra_validators=extra_validators)
         if valid:
             try:

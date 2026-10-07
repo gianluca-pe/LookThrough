@@ -231,6 +231,68 @@ def _basis_digest(basis):
     return sha256(encode_payload(basis).encode()).hexdigest()
 
 
+def _read_affordability_review(token, portfolio):
+    from itsdangerous import BadData
+    try:
+        review = _affordability_review().loads(token)
+    except BadData:
+        abort(400, 'This projection review is invalid. Update the projection and try again.')
+    if not isinstance(review, dict) or not isinstance(review.get('fields'), dict):
+        abort(400)
+    if review.get('version') not in (None, 2):
+        abort(400, 'This projection link uses a different review format. Open Retirement again.')
+    if review.get('portfolio_id') != portfolio.id:
+        abort(404)
+    return review
+
+
+def _review_flexible(review, basis, capacity):
+    if review.get('version') is None:
+        return capacity['flexible_amount']
+    flexible = review.get('flexible_amount')
+    if flexible is None:
+        return None
+    try:
+        return validate_plan({**basis['plan'], 'flexible_amount': flexible})['flexible_amount']
+    except PlanValidationError:
+        abort(400, 'The reviewed lifestyle is invalid. Review the projection again.')
+
+
+def _plan_digest(plan):
+    return _basis_digest({column.name: getattr(plan, column.name) for column in plan.__table__.columns} if plan else None)
+
+
+def _affordability_fields(form):
+    return {field.name: field._value() for field in form if field.name not in {'project', 'save_plan', 'csrf_token', 'review'}}
+
+
+def _rebase_flexible(amount, currency, base_date, inflation, form):
+    from app.services.retirement_plans import completed_years
+    if amount is None:
+        return None
+    if currency != form.currency_code.data.strip().upper():
+        flash('Planning currency changed. Enter Flexible spending explicitly in the new currency; no amount was converted or saved.', 'warning')
+        return None
+    if form.base_date.data < base_date:
+        flash('The selected date precedes this lifestyle\'s purchasing-power date. Enter Flexible spending explicitly for this date.', 'warning')
+        return None
+    elapsed = completed_years(base_date, form.base_date.data)
+    return money(amount * (1 + inflation) ** elapsed, currency)
+
+
+def _review_is_saved(form, flexible, plan, portfolio):
+    from app.retirement_forms import RetirementAffordabilityForm
+    from app.services.retirement_plans import tier_amounts
+    if not plan or plan.planning_mode != 'affordability' or flexible is None:
+        return False
+    amounts = tier_amounts(plan, form.base_date.data)
+    if amounts is None:
+        return False
+    saved_form = RetirementAffordabilityForm(formdata=None, meta={'csrf': False})
+    _prefill_affordability(saved_form, plan, portfolio, form.base_date.data)
+    return form.values() == saved_form.values() and flexible == money(amounts['flexible'], plan.currency_code)
+
+
 def _affordability_chart(result):
     if result['status'] in {'missing', 'limit'}:
         return None
@@ -270,98 +332,144 @@ def _prefill_affordability(form, plan, portfolio, as_of):
 
 @retirement_blueprint.route('/retirement', methods=['GET', 'POST'])
 def index():
-    from itsdangerous import BadSignature
-    from werkzeug.datastructures import MultiDict
-    from app.retirement_forms import RetirementAffordabilityForm
-    from app.services.retirement_affordability import prepare_affordability, solve_affordability, validate_affordability
+    from app.services.ledger_writes import ledger_write
     portfolio = _current_portfolio()
     if portfolio is None:
         return redirect(url_for('setup.show'))
-    plan = adopted_plan(portfolio.id)
-    as_of, date_error = _as_of_date(portfolio)
-    review = None
     if request.method == 'POST' and 'save_plan' in request.form:
         try:
-            review = _affordability_review().loads(request.form.get('review', ''))
-        except BadSignature:
-            abort(400, 'This projection review is invalid. Update the projection and try again.')
-        if review.get('portfolio_id') != portfolio.id:
-            abort(400)
-        form = RetirementAffordabilityForm(MultiDict({**review['fields'], 'csrf_token': request.form.get('csrf_token', '')}))
-    else:
-        form = RetirementAffordabilityForm()
-    editing_review = request.args.get('review') if request.method == 'GET' else None
-    if editing_review:
-        try:
-            previous = _affordability_review().loads(editing_review)
-        except BadSignature:
-            abort(400, 'This projection review is invalid. Update the projection.')
-        if previous.get('portfolio_id') != portfolio.id:
-            abort(404)
-        fields = dict(previous['fields'])
-        if hasattr(form, 'csrf_token'):
-            fields['csrf_token'] = form.csrf_token.current_token
+            with ledger_write(PlanValidationError, 'save_plan'):
+                return _affordability_workspace(portfolio)
+        except PlanValidationError as error:
+            flash(error.message, 'warning')
+            return redirect(url_for('retirement.index', review=request.form.get('review', '')))
+    return _affordability_workspace(portfolio)
+
+
+def _affordability_workspace(portfolio):
+    from datetime import date
+    from sqlalchemy.exc import SQLAlchemyError
+    from werkzeug.datastructures import MultiDict
+    from app.retirement_forms import RetirementAffordabilityForm, RetirementLifestyleForm, RetirementAdoptionForm
+    from app.services.retirement_affordability import prepare_affordability, solve_affordability, validate_affordability, project_lifestyle
+    plan = adopted_plan(portfolio.id)
+    as_of, date_error = _as_of_date(portfolio)
+    action = next((name for name in ('save_plan', 'review_lifestyle', 'use_maximum') if name in request.form), 'project') if request.method == 'POST' else None
+    source_token = request.form.get('review', '') if request.method == 'POST' else request.args.get('review', '')
+    if action in ('save_plan', 'review_lifestyle', 'use_maximum') and not source_token:
+        abort(400, 'Review retirement assumptions before choosing or saving a lifestyle.')
+    previous = _read_affordability_review(source_token, portfolio) if source_token else None
+    form = RetirementAffordabilityForm()
+    if previous and action != 'project':
+        fields = {**previous['fields'], 'csrf_token': request.form.get('csrf_token', '') if request.method == 'POST' else form.csrf_token.current_token if hasattr(form, 'csrf_token') else ''}
         form = RetirementAffordabilityForm(MultiDict(fields))
     elif request.method == 'GET':
         _prefill_affordability(form, plan, portfolio, as_of)
         if plan and plan.planning_mode == 'affordability':
-            fields = {field.name: field._value() for field in form if field.name not in {'project', 'save_plan', 'csrf_token'}}
+            fields = _affordability_fields(form)
             if hasattr(form, 'csrf_token'):
                 fields['csrf_token'] = form.csrf_token.current_token
             form = RetirementAffordabilityForm(MultiDict(fields))
-    result = basis = None
-    # A saved affordability plan can project immediately. Older goals require a real-money choice.
-    should_project = request.method == 'POST' or editing_review or (plan and plan.planning_mode == 'affordability')
+    target_form = RetirementLifestyleForm(formdata=None)
+    adoption_form = RetirementAdoptionForm() if action == 'save_plan' else RetirementAdoptionForm(formdata=None)
+    result = basis = capacity = None
+    flexible = None
+    token = None
+    should_project = request.method == 'POST' or previous or (plan and plan.planning_mode == 'affordability')
     if should_project and form.validate():
         basis, _ = prepare_affordability(portfolio, form.values())
-        result = solve_affordability(basis)
-        if review is not None:
-            if review['digest'] != _basis_digest(basis):
-                flash('Portfolio or income inputs changed since this review. Review the updated result before saving.', 'warning')
-            elif result['flexible_amount'] is not None:
-                try:
-                    values = validate_affordability(form.values())
-                    values['flexible_amount'] = result['flexible_amount']
-                    save_plan(portfolio.id, values, confirmed=True)
-                    db.session.commit()
-                except PlanValidationError as error:
-                    db.session.rollback()
-                    form.add_service_error(error)
+        capacity = solve_affordability(basis)
+        explicit_choice = False
+        if previous:
+            if action == 'project' and previous.get('version') == 2:
+                flexible = _rebase_flexible(
+                    Decimal(previous['flexible_amount']) if previous.get('flexible_amount') is not None else None,
+                    previous['fields']['currency_code'].strip().upper(), date.fromisoformat(previous['fields']['base_date']),
+                    Decimal(previous['fields']['inflation_percent']) / 100, form)
+            else:
+                flexible = _review_flexible(previous, basis, capacity)
+            explicit_choice = previous.get('version') == 2
+        elif plan and plan.planning_mode == 'affordability':
+            flexible = _rebase_flexible(plan.flexible_amount, plan.currency_code, plan.base_date, plan.flexible_inflation_decimal, form)
+            explicit_choice = True
+        if not explicit_choice and flexible is None:
+            flexible = capacity['flexible_amount']
+        stale_sources = previous is not None and action != 'project' and previous.get('digest') != _basis_digest(basis)
+        stale_plan = previous is not None and previous.get('plan_digest') != _plan_digest(plan)
+        if stale_sources or (stale_plan and previous.get('version') == 2):
+            flash('Portfolio, income or saved plan inputs changed since this review. Review the updated result before saving.', 'warning')
+            adoption_form.acknowledge_failure.data = False
+        if action in ('review_lifestyle', 'use_maximum'):
+            target_fields = {**request.form, 'currency_code': form.currency_code.data}
+            if action == 'use_maximum':
+                target_fields['flexible_amount'] = format(capacity['flexible_amount'].normalize(), 'f') if capacity['flexible_amount'] is not None else ''
+            target_form = RetirementLifestyleForm(MultiDict(target_fields))
+            if target_form.validate():
+                flexible = target_form.flexible_amount.data
+        else:
+            target_form.flexible_amount.data = flexible
+        if flexible is not None:
+            try:
+                result = project_lifestyle(basis, flexible)
+            except PlanValidationError as error:
+                target_form.flexible_amount.errors = list(target_form.flexible_amount.errors) + [error.message]
+                flexible = None
+        if action == 'save_plan' and adoption_form.validate() and not date_error:
+            if previous.get('version') != 2:
+                flash('Review this lifestyle again before saving. Older links only describe calculated capacity.', 'warning')
+            elif not stale_sources and not stale_plan and result and result['status'] != 'missing':
+                if result['status'] not in ('funded', 'core_only') and not adoption_form.acknowledge_failure.data:
+                    adoption_form.acknowledge_failure.errors.append('Acknowledge the unmet objectives before adopting this lifestyle.')
                 else:
-                    flash('Plan saved. Overview now uses this Core plus Flexible allowance.', 'success')
-                    return redirect(url_for('retirement.index', as_of=values['base_date'].isoformat()))
+                    try:
+                        values = validate_affordability(form.values())
+                        values['flexible_amount'] = flexible
+                        save_plan(portfolio.id, values, confirmed=True)
+                        db.session.commit()
+                    except PlanValidationError as error:
+                        db.session.rollback()
+                        adoption_form.save_plan.errors.append(error.message)
+                    except SQLAlchemyError:
+                        db.session.rollback()
+                        adoption_form.save_plan.errors.append('The plan could not be saved. Nothing was changed. Review this lifestyle and try again.')
+                    else:
+                        flash('Plan saved. Your chosen Core + Flexible lifestyle is now adopted; the ten-year reserve check still uses Core only.', 'success')
+                        return redirect(url_for('retirement.index', as_of=values['base_date'].isoformat()))
+        token = _affordability_review().dumps(dict(version=2, fields=_affordability_fields(form), digest=_basis_digest(basis),
+                                                  portfolio_id=portfolio.id, flexible_amount=str(flexible) if flexible is not None else None,
+                                                  plan_digest=_plan_digest(plan)))
+        form.review.data = target_form.review.data = token
+        form.review.raw_data = target_form.review.raw_data = None
+        target_form.currency_code.data = form.currency_code.data
+        target_form.currency_code.raw_data = None
     if date_error:
         form.base_date.errors = list(form.base_date.errors) + [date_error]
         result = None
-    token = None
-    if result:
-        fields = {field.name: field._value() for field in form if field.name not in {'project', 'save_plan', 'csrf_token'}}
-        token = _affordability_review().dumps(dict(fields=fields, digest=_basis_digest(basis), portfolio_id=portfolio.id))
     incomes = [dict(id=row.id, name=row.name, annual_amount=row.annual_amount, currency_code=row.currency_code) for row in plan_incomes(plan.id)] if plan else []
-    return render_template('retirement/index.html', form=form, plan=plan_details(plan), result=result,
+    return render_template('retirement/index.html', form=form, target_form=target_form, adoption_form=adoption_form,
+                           plan=plan_details(plan), result=result, capacity=capacity, basis=basis,
+                           review_is_saved=_review_is_saved(form, flexible, plan, portfolio) if basis else False,
                            chart=_affordability_chart(result) if result else None, review_token=token,
-                           incomes=incomes, starting_mix=basis.get("_inputs", {}).get("savings_weights", {}) if basis else {}, portfolio_name=portfolio.name)
+                           incomes=incomes, starting_mix=basis.get('_inputs', {}).get('savings_weights', {}) if basis else {}, portfolio_name=portfolio.name)
 
 
 @retirement_blueprint.get('/retirement/details')
 def details():
-    from itsdangerous import BadSignature
     from werkzeug.datastructures import MultiDict
     from app.retirement_forms import RetirementAffordabilityForm
-    from app.services.retirement_affordability import prepare_affordability, solve_affordability
+    from app.services.retirement_affordability import prepare_affordability, solve_affordability, project_lifestyle
     portfolio = _current_portfolio()
-    try:
-        review = _affordability_review().loads(request.args.get('review', ''))
-    except BadSignature:
-        abort(400, 'Open detailed assumptions from a current retirement projection.')
-    if portfolio is None or review.get('portfolio_id') != portfolio.id:
+    if portfolio is None:
         abort(404)
+    review = _read_affordability_review(request.args.get('review', ''), portfolio)
     form = RetirementAffordabilityForm(MultiDict(review['fields']), meta={'csrf': False})
     if not form.validate():
         abort(400)
     basis, summary = prepare_affordability(portfolio, form.values())
     if review['digest'] != _basis_digest(basis):
         return render_template('retirement/changed.html', portfolio_name=portfolio.name), 409
-    result = solve_affordability(basis)
-    return render_template('retirement/details.html', result=result, projection=result['projection'],
+    capacity = solve_affordability(basis)
+    flexible = _review_flexible(review, basis, capacity)
+    result = project_lifestyle(basis, flexible) if flexible is not None else capacity
+    return render_template('retirement/details.html', result=result, capacity=capacity, projection=result['projection'],
                            inputs=form.values(), basis=basis, summary=summary, portfolio_name=portfolio.name)

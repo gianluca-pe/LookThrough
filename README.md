@@ -19,6 +19,8 @@ See [release notes](RELEASE-NOTES.md) for verification and limitations.
   three and seven years of Core spending in the selected date's purchasing power.
 - Solves deterministic retirement affordability: steady real Flexible spending
   alongside Core spending, savings, income and a final-age capital goal.
+- Separates calculated spending capacity from a chosen Flexible lifestyle; review
+  and explicitly adopt a target without automatically following the maximum.
 - Compares current and alternative allocations across 1,000 repeatable USD Monte
   Carlo paths, with streamed progress, printable reports and table equivalents.
 - Offers named local databases, explicit backup-before-upgrade and JSON backup/restore.

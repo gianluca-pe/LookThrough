@@ -456,7 +456,7 @@ def test_invalid_inputs_and_changed_sources_never_return_cached_results(app, cli
     assert response.status_code == 422
     assert b'href="#equity_percent"' in response.data
     assert b'aria-describedby="equity_percent-error"' in response.data
-    for value in ('241','-1','NaN','Infinity'):
+    for value in ('241.001','-1','NaN','Infinity'):
         assert client.post('/retirement/monte-carlo', data={**fields,'flexible_amount':value}).status_code == 422
     with app.app_context():
         cash = db.session.scalar(select(CashBalanceCheckpoint))

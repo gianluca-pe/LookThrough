@@ -9,6 +9,55 @@
     var original = fields.map(function (field) { return field.value; }).join('|');
     var button = document.getElementById('run_comparison');
     var buttonLabel = button.value;
+    var allocationStatus = document.getElementById('mc-allocation-total');
+    var allocationFields = ['equity_percent', 'income_percent', 'liquidity_percent', 'alternatives_percent'].map(function (name) { return form.elements.namedItem(name); });
+    var liveAllocation = allocationStatus && form.dataset.allocationCheckUrl && window.fetch && window.AbortController;
+    var allocationTimer;
+    var allocationController;
+    var allocationRevision = 0;
+    function cancelAllocationCheck() {
+      window.clearTimeout(allocationTimer);
+      allocationRevision++;
+      if (allocationController) allocationController.abort();
+    }
+    function scheduleAllocationCheck() {
+      if (!liveAllocation || running) return;
+      cancelAllocationCheck();
+      var revision = allocationRevision;
+      allocationStatus.dataset.state = 'checking';
+      delete allocationStatus.dataset.total;
+      allocationStatus.textContent = 'Checking alternative allocation…';
+      allocationTimer = window.setTimeout(async function () {
+        allocationController = new AbortController();
+        var data = new FormData();
+        allocationFields.forEach(function (field) { data.append(field.name, field.value); });
+        var csrfToken = form.elements.namedItem('csrf_token');
+        if (csrfToken) data.append('csrf_token', csrfToken.value);
+        try {
+          var response = await fetch(form.dataset.allocationCheckUrl, {method: 'POST', body: data,
+            credentials: 'same-origin', headers: {'Accept': 'application/json'}, signal: allocationController.signal});
+          if (!response.ok) throw new Error('Allocation preview unavailable');
+          var feedback = await response.json();
+          if (!['complete', 'under', 'over', 'invalid'].includes(feedback.state) || typeof feedback.message !== 'string') throw new Error('Invalid allocation preview');
+          if (revision !== allocationRevision) return;
+          allocationStatus.dataset.state = feedback.state;
+          if (typeof feedback.total === 'string') allocationStatus.dataset.total = feedback.total;
+          else delete allocationStatus.dataset.total;
+          allocationStatus.textContent = feedback.message;
+        } catch (error) {
+          if (revision !== allocationRevision || error.name === 'AbortError') return;
+          allocationStatus.dataset.state = 'unavailable';
+          delete allocationStatus.dataset.total;
+          allocationStatus.textContent = 'Live total unavailable. Run comparison will still validate the allocation.';
+        }
+      }, 250);
+    }
+    if (liveAllocation) {
+      allocationFields.forEach(function (field) {
+        field.addEventListener('input', scheduleAllocationCheck);
+        field.addEventListener('change', scheduleAllocationCheck);
+      });
+    }
     var waiting = document.createElement('div');
     waiting.id = 'mc-waiting';
     waiting.hidden = true;
@@ -39,6 +88,7 @@
       button.value = buttonLabel;
       status.classList.remove('sr-only');
       fields.forEach(function (field) { field.readOnly = false; });
+      scheduleAllocationCheck();
     }
     form.addEventListener('input', function () {
       if (running) return;
@@ -49,6 +99,11 @@
       if (!(pathCount > 0) || !window.fetch || !window.ReadableStream || !window.TextDecoder || !window.AbortController) return;
       event.preventDefault();
       if (running) return;
+      cancelAllocationCheck();
+      if (allocationStatus && allocationStatus.dataset.state === 'checking') {
+        allocationStatus.dataset.state = 'unavailable';
+        allocationStatus.textContent = 'The alternative allocation is checked again on submission.';
+      }
       running = true;
       button.disabled = true;
       button.value = 'Calculating…';
@@ -131,6 +186,7 @@
       status.textContent = '';
     });
     window.addEventListener('pagehide', function () {
+      cancelAllocationCheck();
       window.clearInterval(timer);
       if (controller) controller.abort();
     });

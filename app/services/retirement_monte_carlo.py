@@ -32,10 +32,27 @@ class MonteCarloValidationError(ValueError):
     pass
 
 
-def allocation_weights(percentages):
+def allocation_total(percentages):
     if set(percentages) != set(ROLES) or any(
         not isinstance(v, Decimal) or not v.is_finite() or v < 0 or v > 100 for v in percentages.values()
-    ) or sum(percentages.values(), ZERO) != 100:
+    ):
+        raise MonteCarloValidationError("Enter four allocation percentages between 0 and 100, totalling exactly 100%.")
+    return sum(percentages.values(), ZERO)
+
+
+def allocation_feedback(percentages):
+    total = allocation_total(percentages)
+    difference = abs(Decimal('100') - total)
+    state = 'complete' if total == 100 else 'under' if total < 100 else 'over'
+    total_text = format(total.normalize(), 'f')
+    difference_text = format(difference.normalize(), 'f')
+    description = 'allocation complete' if state == 'complete' else difference_text + '% ' + ('remaining' if state == 'under' else 'over')
+    return {'state': state, 'total': total_text, 'difference': difference_text,
+            'message': 'Total: ' + total_text + '% — ' + description + '.'}
+
+
+def allocation_weights(percentages):
+    if allocation_total(percentages) != 100:
         raise MonteCarloValidationError("Enter four allocation percentages between 0 and 100, totalling exactly 100%.")
     return _distribute(ONE, percentages)
 

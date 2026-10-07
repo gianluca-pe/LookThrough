@@ -88,6 +88,28 @@ and fixture. Browser fixtures may use Flask's development server; normal user
 launch uses Waitress. Release verification must also exercise Waitress streaming
 and the actual shell launcher.
 
+The Flexible-target workflow has a self-contained synthetic browser check:
+
+```sh
+node tests/retirement_targets_browser.cjs
+```
+
+It starts the disposable three-year `targets` fixture on port 5189 and temporary
+headless Chrome on debug port 9345, then stops both. It verifies exact annual
+review/save/reopen, independent capacity, linked errors and keyboard focus,
+unsupported-target acknowledgement, above-capacity Monte Carlo without adoption,
+zero Flexible, no-JavaScript operation, narrow layout and reduced-motion charts.
+It also verifies live alternative-allocation totals, six-decimal residuals,
+incomplete inputs, debouncing, out-of-order responses, connection recovery and
+server-rendered totals after no-JavaScript validation. The preview endpoint uses
+the shared percentage form and Decimal sum without portfolio access or simulation;
+exact invalid-input and CSRF failure paths are retained in
+`tests/test_monte_carlo_allocation_feedback.py`.
+The printed `/tmp/lt-retirement-targets-*` directory contains assertion JSON,
+fixture logs, synthetic screenshots and a printable annual-path PDF. Exact
+failure-path, stale-review, Core-reserve and backup/frozen-comparison checks are
+in `tests/test_retirement_targets.py`.
+
 ## Presentation and changed behavior
 
 Each page should explain the question, result and effect of changing an input.

@@ -1,7 +1,7 @@
 {% set p = experiment.basis.plan %}
 <div class="retirement-facts">
 <div><span>Core / year</span><strong>USD {{ p.core_amount|money_amount }}</strong><small>Today's money</small></div>
-<div><span>Flexible {{ 'tested' if result else 'allowance' }} / year</span><strong>USD {{ p.flexible_amount|money_amount }}</strong><small>Today's money</small></div>
+<div><span>Flexible {{ 'tested' if result else 'reviewed' }} / year</span><strong>USD {{ p.flexible_amount|money_amount }}</strong><small>Today's money</small></div>
 <div><span>Retire at {{ p.withdrawal_start_age_years }}</span><strong>Through age {{ p.final_age_years }}</strong><small>Age now {{ p.current_age_years }}</small></div>
 <div><span>Final-age goal</span><strong>USD {{ p.terminal_legacy_target_amount|money_amount }}</strong><small>Today's money</small></div>
 </div>

@@ -102,8 +102,8 @@ those retired forms do not change saved data. Existing budget-style plans expose
 View existing budget plan from Retirement, while new and affordability plans use
 the current planner. Stored historical assumptions remain preserved.
 
-The planner solves a steady annual real Flexible allowance alongside entered Core
-spending, returns, inflation, working-year net savings, dated retirement income,
+The planner solves a steady annual real maximum Flexible capacity alongside entered
+Core spending, returns, inflation, working-year net savings, dated retirement income,
 retirement age, final age and a real-money legacy goal. Calculations identify Core
 shortfalls and unreachable legacy goals. Withdrawal amounts are before unmodelled
 withdrawal taxes; planned income's contribution is shown when applicable.
@@ -115,11 +115,42 @@ mixed-role sales. Deposits follow the existing principal/quoted-terms model, not
 general accrual engine. Positive working savings enter at year-end in the starting
 retirement mix and stop at retirement; working living costs are assumed salary-funded.
 
-Update projection is exploration. Save as my plan explicitly adopts the calculated
-Core + Flexible budget. Shared spending views use that adopted plan; the ten-year
-reserve card intentionally uses only Core. Simulated income, spending changes and
-sales never post ledger entries. Optional spending rules and named frozen return-path
-comparisons remain read-only experiments unless an explicit adoption action applies.
+Calculated capacity and chosen spending are separate. The second card accepts an
+exact annual Flexible target in portfolio-date purchasing power, with rounded
+monthly equivalents. Review this lifestyle evaluates that target with the shared
+annual engine; Use calculated maximum explicitly selects the solver's exact annual
+result, never a reconstructed rounded monthly number. Both are unsaved exploration.
+Targets can be zero or above calculated capacity, but Core plus Flexible must be
+positive. Charts and annual tables describe the chosen reviewed lifestyle, not the
+maximum. Core failures, Flexible failures, missed final-capital goals and unpaid
+opening obligations are identified separately. Missing inputs retain the target
+but withhold affordability and adoption.
+
+Save as my plan explicitly adopts the reviewed Core + chosen Flexible budget.
+An unsupported lifestyle requires acknowledgement; adoption records an objective,
+not an affordability certification. Reopening defaults to that saved target while
+recalculating capacity. New valuations, assumptions or capacity shortfalls never
+automatically raise or clamp the saved target. Later-date review rebases Flexible
+consistently with Core; it does not write the plan. A draft date change uses the
+previous money basis's inflation. A currency change or a date before the target's
+base date requires explicit Flexible entry, without implicit FX conversion.
+
+Signed reviews pin the chosen target and portfolio evidence. Adoption checks both
+source evidence and saved-plan state under a SQLite write reservation, so an older
+tab cannot overwrite a newer adoption without fresh review. Old capacity-only
+links can still be viewed/tested with their original maximum semantics, but must
+be freshly reviewed before adoption. The existing flexible_amount column remains
+adopted annual spending: previously saved amounts, inactive spending rules and
+frozen comparisons are preserved. No schema or backup-format migration is needed;
+there is no automatic-follow-capacity preference or new persistent plan archive.
+
+Shared spending views use the adopted budget; the ten-year reserve card intentionally
+uses only Core. Simulated income, spending changes and sales never post ledger
+entries. Optional spending rules and named frozen return-path comparisons remain
+read-only experiments unless an explicit adoption action applies. With JavaScript,
+edited inputs mark displayed results as the previous review and disable adoption
+and Monte Carlo entry until review. Without JavaScript, adoption still explicitly
+identifies and saves only the signed reviewed annual target.
 
 Actual-spending charts show nominal annual payments and a purchasing-power reference;
 capital charts use today's money with nominal equivalents. The legacy target has
@@ -127,12 +158,26 @@ both bases at the final age. Printable reports expose corresponding annual table
 
 ## Monte Carlo
 
-The USD experiment starts from a reviewed deterministic projection and tests its
-Flexible allowance or a lower amount, including zero. It compares current and one
-alternative allocation across 1,000 shared repeatable paths. Proportional withdrawals
+The USD experiment starts from a reviewed deterministic lifestyle, saved or unsaved,
+and defaults to its chosen Flexible target. Any valid nonnegative annual amount can
+be tested, including zero and amounts above deterministic capacity; this changes
+only the experiment, never the reviewed target or adopted plan. Deterministic
+capacity is shown as a reference, not a ceiling for different withdrawal/rebalancing
+rules. Returning to the reviewed Retirement link preserves its target. It compares
+current and one alternative allocation across 1,000 shared repeatable paths. Proportional withdrawals
 and annual rebalancing replace bucket ordering in this experiment. Projects and real
 access/maturity limits remain; source preparation still expects bucket classification.
 Bucket-free portfolio planning is not an implemented mode.
+
+The alternative allocation shows an exact total with the remaining or excess
+percentage, and a distinct complete state at exactly 100%. With JavaScript,
+debounced localhost-only requests validate just the four entered percentages using
+the same Decimal fields and summation as submission. Blank or invalid fields
+withhold the total rather than inventing zero. Delayed responses cannot replace
+newer feedback; connection failure leaves ordinary submission available. These
+checks do not run simulations, change a plan or normalize allocations. CSRF still
+applies. Without JavaScript, the displayed total reflects the rendered fields and
+Run comparison validates edits and returns updated totals with linked errors.
 
 Risk model v2 uses user-entered nominal compound growth, fixed inflation, annual
 independent correlated normal log-return shocks and no upper-return clipping.

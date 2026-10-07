@@ -24,6 +24,13 @@ from test_two_tier_retirement import plan_data, income_data
 def seed_demo(state):
     portfolio, account = _portfolio_account(spending="60000", inflation="0.025")
     portfolio.name = "Retirement demo — synthetic data"
+    if state == "targets":
+        _cash(account, "1000")
+        save_plan(portfolio.id, plan_data(
+            planning_mode="affordability", legacy_value_basis="today", spending_policy="full_budget",
+            terminal_legacy_target_amount=Decimal("100"), terminal_legacy_target_currency_code="USD"), confirmed=True)
+        db.session.commit()
+        return
     if state == "surplus":
         _cash(account, "1000000")
         save_plan(portfolio.id, plan_data(
@@ -59,7 +66,7 @@ def seed_demo(state):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--state", choices=["funded", "shortfall", "missing", "stale", "restricted", "legacy", "surplus"], default="funded")
+    parser.add_argument("--state", choices=["funded", "shortfall", "missing", "stale", "restricted", "legacy", "surplus", "targets"], default="funded")
     parser.add_argument("--port", type=int, default=5185)
     args = parser.parse_args()
     with TemporaryDirectory(prefix="lookthrough-retirement-demo-") as directory:

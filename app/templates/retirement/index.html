@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import error_summary, wt_field, first_error, currency_datalist %}
+{% from "_macros.html" import error_summary, wt_field, wt_checkbox, first_error, currency_datalist %}
 {% block title %}Retirement{% endblock %}
 {% block heading %}Can I retire on this portfolio?{% endblock %}
-{% block scripts %}{% if chart %}<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script><script src="{{ static_url('js/charts.js') }}" defer></script>{% endif %}{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/retirement.js') }}" defer></script>{% if chart %}<script src="{{ static_url('js/vendor/chart.umd.min.js') }}" defer></script><script src="{{ static_url('js/charts.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="retirement-workspace">
 <p class="lede">Under your assumptions, from where you stand today — see the lifestyle your portfolio can support. Revisit as life and balances change.</p>
@@ -11,8 +11,8 @@
 {% endif %}
 <section class="card retirement-assumptions" aria-labelledby="assumptions-heading">
 <h2 id="assumptions-heading">Assumptions in this projection</h2>
-{% if result %}
-{% set p = result.projection.plan %}
+{% if capacity %}
+{% set p = basis.plan %}
 <div class="retirement-facts">
 <div><span>Retire at</span><strong>{{ p.withdrawal_start_age_years }}</strong><small>Age now {{ p.current_age_years }} · through {{ p.final_age_years }}</small></div>
 <div><span>Core / year</span><strong>{{ p.currency_code }} {{ p.core_amount|money_amount(currency=p.currency_code) }}</strong><small>Today's purchasing power</small></div>
@@ -20,12 +20,12 @@
 <div><span>Inflation / year</span><strong>{{ p.core_inflation_decimal|percentage_amount(2) }}%</strong><small>Core, Flexible and money left</small></div>
 </div>
 <p class="meta">Portfolio &amp; today's money: {{ p.base_date|display_date }} · Net savings while working: {{ p.currency_code }} {{ p.annual_savings_amount|money_amount(currency=p.currency_code) }}/year.</p>
-{% if result.projection.years %}<p class="meta">Starting retirement capital: {{ p.currency_code }} {{ result.projection.years[0].starting_value_amount|money_amount(currency=p.currency_code) }} · Mix: {% for role, weight in starting_mix.items() %}{{ role|capitalize }} {{ weight|percentage_amount(1) }}%{{ ' / ' if not loop.last }}{% endfor %}. Projects excluded.</p>{% endif %}
+{% if capacity.projection.years %}<p class="meta">Starting retirement capital: {{ p.currency_code }} {{ capacity.projection.years[0].starting_value_amount|money_amount(currency=p.currency_code) }} · Mix: {% for role, weight in starting_mix.items() %}{{ role|capitalize }} {{ weight|percentage_amount(1) }}%{{ ' / ' if not loop.last }}{% endfor %}. Projects excluded.</p>{% endif %}
 <p class="meta">Nominal returns: Equity {{ p.equity_return_decimal|percentage_amount(2) }}% · Income {{ p.income_return_decimal|percentage_amount(2) }}% · Liquidity {{ p.liquidity_return_decimal|percentage_amount(2) }}% · Alternatives {{ p.alternatives_return_decimal|percentage_amount(2) }}%.</p>
 {% else %}
-<p>Set the essentials below to find your affordable Flexible allowance.</p>
+<p>Set the essentials below to find your calculated Flexible capacity, then choose the lifestyle you want to plan.</p>
 {% endif %}
-<details class="disclosure" {% if not result or form.errors %}open{% endif %}>
+<details class="disclosure" {% if not capacity or form.errors %}open{% endif %}>
 <summary>Change assumptions</summary>
 <form method="post" novalidate id="affordability-form">
 {{ form.hidden_tag() }}{{ error_summary(form) }}
@@ -42,30 +42,62 @@
 </details>
 <p class="meta">Planned retirement income: {% if incomes %}{% for income in incomes %}<a href="{{ url_for('retirement.income', income_id=income.id) }}">{{ income.name }}</a>{{ ', ' if not loop.last }}{% endfor %}{% else %}none{% endif %}{% if plan %} · <a href="{{ url_for('retirement.income') }}">Add income</a>{% else %}. Save a plan to add income.{% endif %}</p>
 </section>
-{% if result %}
-{% set p = result.projection.plan %}
+{% if capacity %}
+{% set p = basis.plan %}
 <section class="card retirement-answer" aria-labelledby="answer-heading">
-{% if result.status == 'missing' %}
+{% if capacity.status == 'missing' %}
 <h2 id="answer-heading">A few portfolio inputs are missing</h2><p>Complete the source values, classification or access information before calculating an allowance.</p><p><a href="{{ url_for('positions.holdings') }}">Review Holdings</a> · <a href="{{ url_for('positions.show_values') }}">Update values and FX</a></p>
-{% elif result.status == 'limit' %}
+{% elif capacity.status == 'limit' %}
 <h2 id="answer-heading">The allowance exceeds the supported amount</h2><p>Check the amounts and return assumptions. No maximum is shown.</p>
 {% else %}
-<h2 id="answer-heading">{% if result.status == 'funded' %}Retiring at {{ p.withdrawal_start_age_years }}, {{ 'you could draw from your portfolio and planned income' if result.includes_planned_income else 'you could withdraw' }}{% elif result.status == 'core_only' %}Core fits. There is no room for Flexible spending.{% else %}No room for Flexible spending{% endif %}</h2>
-{% if result.status == 'funded' %}<p class="retirement-big">{{ p.currency_code }} {{ result.total_monthly|money_amount(currency=p.currency_code) }} <span>/ month</span></p>{% endif %}
+<h2 id="answer-heading">{% if capacity.status == 'funded' %}Retiring at {{ p.withdrawal_start_age_years }}, {{ 'you could draw from your portfolio and planned income' if capacity.includes_planned_income else 'you could withdraw' }}{% elif capacity.status == 'core_only' %}Core fits. There is no room for Flexible spending.{% else %}No room for Flexible spending{% endif %}</h2>
+{% if capacity.status == 'funded' %}<p class="retirement-big">{{ p.currency_code }} {{ capacity.total_monthly|money_amount(currency=p.currency_code) }} <span>/ month · calculated maximum</span></p>{% endif %}
 <p class="hint">Before any taxes on portfolio withdrawals. The simulator does not deduct these taxes; they would reduce the amount available for your lifestyle.</p>
-<div class="retirement-allowance"><div><span>Core budget / month</span><strong>{{ p.currency_code }} {{ result.core_monthly|money_amount(currency=p.currency_code) }}</strong></div><div><span>Flexible allowance / month</span><strong>{{ p.currency_code }} {{ result.flexible_monthly|money_amount(currency=p.currency_code) }}</strong></div></div>
-{% if result.status in ['funded','core_only'] %}
-<p>Your Core lifestyle{% if result.flexible_amount %} plus <strong>{{ p.currency_code }} {{ result.flexible_amount|money_amount(currency=p.currency_code) }}/year Flexible</strong>{% endif %} is funded in every retirement year, leaving <strong>{{ p.currency_code }} {{ result.final_today_amount|money_amount(currency=p.currency_code) }} at age {{ p.final_age_years }}</strong>.</p>
-{% elif result.status == 'goal_shortfall' %}
-<p>Core is funded through age {{ p.final_age_years }}, but leaves {{ p.currency_code }} {{ result.final_today_amount|money_amount(currency=p.currency_code) }} — {{ p.currency_code }} {{ result.legacy_gap_today|abs|money_amount(currency=p.currency_code) }} less than you want.</p>
+<div class="retirement-allowance"><div><span>Core budget / month</span><strong>{{ p.currency_code }} {{ capacity.core_monthly|money_amount(currency=p.currency_code) }}</strong></div><div><span>Calculated Flexible capacity / month</span><strong>{{ p.currency_code }} {{ capacity.flexible_monthly|money_amount(currency=p.currency_code) }}</strong><small id="capacity-flexible">{{ p.currency_code }} {{ capacity.flexible_amount|money_amount(currency=p.currency_code) }}/year</small></div></div>
+{% if capacity.status in ['funded','core_only'] %}
+<p>At the calculated maximum, your Core lifestyle{% if capacity.flexible_amount %} plus <strong>{{ p.currency_code }} {{ capacity.flexible_amount|money_amount(currency=p.currency_code) }}/year Flexible</strong>{% endif %} is funded in every retirement year and meets your final-capital goal under these assumptions.</p>
+{% elif capacity.status == 'goal_shortfall' %}
+<p>Core alone is funded through age {{ p.final_age_years }}, but leaves {{ p.currency_code }} {{ capacity.final_today_amount|money_amount(currency=p.currency_code) }} — {{ p.currency_code }} {{ capacity.legacy_gap_today|abs|money_amount(currency=p.currency_code) }} less than you want.</p>
 {% else %}
-<p><strong>Core first falls short at age {{ result.first_core_shortfall.age }}.</strong> {% if result.shortfall_cause == 'access' %}Capital remains, but available money cannot cover that year's Core spending.{% else %}Available money runs out while paying that year's Core spending.{% endif %} This plan does not fund your Core lifestyle through age {{ p.final_age_years }}.</p>
+<p><strong>Core alone first falls short at age {{ capacity.first_core_shortfall.age }}.</strong> {% if capacity.shortfall_cause == 'access' %}Capital remains, but available money cannot cover that year's Core spending.{% else %}Available money runs out while paying that year's Core spending.{% endif %}</p>
 {% endif %}
 <p class="hint">All amounts above are in {{ p.base_date|display_date }} purchasing power. Monthly amounts are equivalents of annual spending. This is a deterministic projection under your assumptions.</p>
-{% if result.projection.status == 'stale' %}<p class="notice">Some portfolio inputs are stale. <a href="{{ url_for('positions.show_values') }}">Refresh values and FX</a> before relying on this result.</p>{% endif %}
-{% if result.total_amount > 0 %}<form method="post" class="retirement-save">{{ form.csrf_token(id='save-csrf-token') if form.csrf_token is defined }}<input type="hidden" name="review" value="{{ review_token }}"><button class="btn" type="submit" name="save_plan" value="1">Save as my plan</button><span class="hint">Sets Overview's spending to this Core + Flexible allowance.</span></form>{% endif %}
 {% endif %}
+{% if capacity.projection.status == 'stale' %}<p class="notice">Some portfolio inputs are stale. <a href="{{ url_for('positions.show_values') }}">Refresh values and FX</a> before relying on this result.</p>{% endif %}
+<div id="planned-lifestyle" class="retirement-lifestyle" data-lifestyle-status="{{ result.status if result else 'unreviewed' }}">
+<h3>The lifestyle I want to plan</h3>
+<p>Choose a fixed Flexible budget independently of the calculated maximum. Reviewing does not save it; changing balances or assumptions never automatically changes your saved choice.</p>
+{% if plan %}<p class="meta">Saved Flexible: {{ plan.currency_code }} {{ plan.flexible_amount|money_amount(currency=plan.currency_code) }}/year in {{ plan.base_date|display_date }} purchasing power.</p>{% else %}<p class="meta">No lifestyle has been saved yet.</p>{% endif %}
+<form method="post" id="lifestyle-form" novalidate>
+{{ target_form.csrf_token(id='lifestyle-csrf-token') if target_form.csrf_token is defined }}{{ target_form.review(id='lifestyle-review') }}{{ target_form.currency_code(id='lifestyle-currency') }}{{ error_summary(target_form) }}
+{{ wt_field(target_form.flexible_amount, required=true, autofocus=(target_form.flexible_amount.errors|length > 0), label='My annual Flexible spending — ' ~ p.currency_code ~ ', today’s money', hint='Annual amount in the purchasing power of the portfolio date above. Zero and amounts above capacity can be reviewed. Monthly equivalents are rounded for display only.') }}
+<div class="retirement-actions">{{ target_form.review_lifestyle(class='btn btn-primary') }}{% if capacity.flexible_amount is not none %}{{ target_form.use_maximum(class='btn') }}{% endif %}</div>
+</form>
+<p id="retirement-review-status" class="notice" role="status" hidden>Inputs changed. The figures below describe the last reviewed lifestyle. Review your changes before saving or testing with Monte Carlo.</p>
+{% if target_form.errors %}<p class="notice">Correct the input and review again. Any charts below still describe the previous reviewed lifestyle, not the invalid entry.</p>{% endif %}
+{% if result %}
+{% if result.status == 'missing' %}<p class="notice">Your chosen Flexible budget is retained, but affordability is unknown until the missing inputs are completed. Nothing can be adopted from this incomplete projection.</p>
+{% else %}
+<div class="retirement-allowance"><div><span>Reviewed Flexible / month</span><strong id="reviewed-flexible-monthly">{{ p.currency_code }} {{ result.flexible_monthly|money_amount(currency=p.currency_code) }}</strong></div><div><span>Reviewed Core + Flexible / month</span><strong>{{ p.currency_code }} {{ result.total_monthly|money_amount(currency=p.currency_code) }}</strong></div></div>
+<p><strong>{{ 'Saved lifestyle' if review_is_saved else 'Unsaved reviewed lifestyle' }}:</strong> Core {{ p.currency_code }} {{ result.core_amount|money_amount(currency=p.currency_code) }}/year + Flexible {{ p.currency_code }} {{ result.flexible_amount|money_amount(currency=p.currency_code) }}/year.</p>
+{% if result.status in ['funded','core_only'] %}
+<p>This chosen lifestyle is funded in every retirement year, leaving <strong>{{ p.currency_code }} {{ result.final_today_amount|money_amount(currency=p.currency_code) }} at age {{ p.final_age_years }}</strong> in today's money and meeting the final-capital goal. This is not a guarantee under changing returns.</p>
+{% elif result.status == 'core_shortfall' %}<p class="notice"><strong>This chosen lifestyle does not fit: Core first falls short at age {{ result.first_core_shortfall.age }}.</strong> {% if result.shortfall_cause == 'access' %}Capital remains, but available money cannot pay Core.{% else %}Available money runs out while paying Core.{% endif %}</p>
+{% elif result.status == 'flexible_shortfall' %}<p class="notice"><strong>Flexible first falls short at age {{ result.first_flexible_shortfall.age }}.</strong> Core is funded throughout, but the full chosen lifestyle cannot be paid every year.</p>
+{% elif result.status == 'goal_shortfall' %}<p class="notice">Spending is funded throughout, but ending capital is {{ p.currency_code }} {{ result.final_today_amount|money_amount(currency=p.currency_code) }} — {{ p.currency_code }} {{ result.legacy_gap_today|abs|money_amount(currency=p.currency_code) }} below the final-capital goal in today's money.</p>
+{% else %}<p class="notice">An opening cash obligation remains unpaid at the end of this chosen projection.</p>{% endif %}
+{% if not target_form.errors and not form.errors %}
+<form method="post" id="adoption-form" class="retirement-adoption" novalidate>
+{{ adoption_form.csrf_token(id='save-csrf-token') if adoption_form.csrf_token is defined }}<input type="hidden" name="review" value="{{ review_token }}" id="save-review">{{ error_summary(adoption_form) }}
+{% if result.status not in ['funded','core_only'] %}{{ wt_checkbox(adoption_form.acknowledge_failure, required=true, autofocus=(adoption_form.acknowledge_failure.errors|length > 0)) }}{% endif %}
+<div class="retirement-save">{{ adoption_form.save_plan(class='btn', autofocus=(adoption_form.save_plan.errors|length > 0)) }}<span class="hint">Adopts the reviewed Flexible {{ p.currency_code }} {{ result.flexible_amount|money_amount(currency=p.currency_code) }}/year, not the calculated maximum. The ten-year reserve check uses Core only.</span></div>
+</form>
+{% endif %}
+{% endif %}
+{% else %}<p class="notice">Enter and review a Flexible budget, or explicitly choose the calculated maximum, to see its annual path.</p>{% endif %}
+</div>
 </section>
+{% if result %}
 {% if chart %}
 <section class="card" aria-labelledby="spending-heading">
 <h2 id="spending-heading">Actual spending by year</h2>
@@ -107,8 +139,9 @@
 </section>
 {% endif %}
 <p class="retirement-details"><a href="{{ url_for('retirement.details', review=review_token) }}" target="_blank" rel="noopener">View / print detailed assumptions &amp; annual path <span class="meta">(new tab)</span></a></p>
-{% if result.flexible_amount is not none %}<section class="card"><h2>Test changing investment returns</h2><p>See how often this lifestyle holds up across simulated market paths, and compare your current mix with another allocation.</p><a class="btn" href="{{ url_for('monte_carlo.index', review=review_token) }}">Test with Monte Carlo</a><p class="hint">Uses the reviewed assumptions above. The first risk profile models USD outcomes.</p></section>{% endif %}
+{% if result.flexible_amount is not none and result.status != 'missing' and not target_form.errors and not form.errors %}<section class="card"><h2>Test changing investment returns</h2><p>See how often this reviewed lifestyle holds up across simulated market paths, and compare your current mix with another allocation. Saving first is not required.</p><a class="btn" data-reviewed-action href="{{ url_for('monte_carlo.index', review=review_token) }}">Test with Monte Carlo</a><p class="hint">Tests the reviewed Flexible {{ p.currency_code }} {{ result.flexible_amount|money_amount(currency=p.currency_code) }}/year. Temporary experiment edits do not adopt a plan. The first risk profile models USD outcomes.</p></section>{% endif %}
 <noscript><p>The detailed annual path includes the data for both charts. Projections and saving work without JavaScript.</p></noscript>
+{% endif %}
 {% endif %}
 <p class="meta retirement-history"><a href="{{ url_for('retirement.scenarios') }}">Saved return comparisons</a></p>
 </div>

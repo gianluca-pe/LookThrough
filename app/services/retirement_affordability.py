@@ -41,14 +41,16 @@ def prepare_affordability(portfolio, data):
 
 def _trial(basis, flexible):
     candidate = dict(basis)
-    plan = copy(basis["_inputs"]["plan"])
+    plan = copy(basis['_inputs']['plan'] if '_inputs' in basis else basis['assumption'])
     plan.flexible_amount = flexible
-    candidate["_inputs"] = {**basis["_inputs"], "plan": plan}
+    if '_inputs' in basis:
+        candidate["_inputs"] = {**basis["_inputs"], "plan": plan}
     candidate["assumption"] = copy(basis["assumption"])
     candidate["assumption"].flexible_amount = flexible
     candidate["plan"] = plan_details(plan)
+    rate = basis['spending']['fx_rate']
     candidate["spending"] = {**basis["spending"], "native_amount": plan.core_amount + flexible,
-                             "reporting_amount": (plan.core_amount + flexible) * basis["spending"]["fx_rate"]}
+                             "reporting_amount": (plan.core_amount + flexible) * rate if rate is not None else None}
     return run_retirement_projection(candidate)
 
 
@@ -98,6 +100,24 @@ def solve_affordability(basis):
     return result
 
 
+def project_lifestyle(basis, flexible):
+    values = validate_plan({**basis['plan'], 'flexible_amount': flexible})
+    if not basis['calculation_complete']:
+        return {'status': 'missing', 'projection': _trial(basis, values['flexible_amount']), 'flexible_amount': flexible}
+    projection = _trial(basis, values['flexible_amount'])
+    if projection['lifestyle']['first_core_shortfall']:
+        status = 'core_shortfall'
+    elif projection['lifestyle']['first_flexible_cut']:
+        status = 'flexible_shortfall'
+    elif projection['years'][-1]['opening_obligation_remaining_amount'] > ZERO:
+        status = 'obligation_shortfall'
+    elif projection['final_value_amount'] < projection['legacy_target_reporting_amount']:
+        status = 'goal_shortfall'
+    else:
+        status = 'funded' if flexible else 'core_only'
+    return _present(projection, flexible, status)
+
+
 def _present(projection, allowance, status):
     plan = projection["plan"]
     inflation = plan["core_inflation_decimal"]
@@ -114,6 +134,7 @@ def _present(projection, allowance, status):
                      "savings_added_amount": row.get("savings_added_amount", ZERO)})
     projection = {**projection, "years": tuple(rows)}
     first = next((row for row in rows if row["core_shortfall_amount"] > 0), None)
+    first_flexible = next((row for row in rows if row['flexible_resource_shortfall_amount'] > 0), None)
     # A positive, locked portfolio is a payment-access gap, not capital depletion.
     shortfall_cause = ("access" if first and first["starting_value_amount"] > first["withdrawn_amount"] else "resources") if first else None
     total = plan["core_amount"] + allowance
@@ -126,4 +147,5 @@ def _present(projection, allowance, status):
             "legacy_today_amount": plan["terminal_legacy_target_amount"],
             "legacy_nominal_amount": projection["legacy_target_reporting_amount"],
             "legacy_gap_today": rows[-1]["ending_value_today"] - plan["terminal_legacy_target_amount"],
-            "first_core_shortfall": first, "shortfall_cause": shortfall_cause}
+            "first_core_shortfall": first, "first_flexible_shortfall": first_flexible,
+            "shortfall_cause": shortfall_cause}

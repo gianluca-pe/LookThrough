@@ -1168,6 +1168,10 @@ details.year-detail[open] summary { margin-bottom: var(--space-2); }
 .retirement-save { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; margin-top:1.5rem; }
 .retirement-details { margin:1.5rem 0; }
 .retirement-history { margin-top:2rem; }
+.retirement-lifestyle { border-top:1px solid var(--color-border); margin-top:1.5rem; padding-top:1.5rem; }
+.retirement-lifestyle .field { max-width:42rem; }
+.retirement-actions { display:flex; gap:1rem; flex-wrap:wrap; }
+.retirement-adoption { margin-top:1.5rem; }
 @media(max-width:700px) { .retirement-facts,.retirement-inputs,.retirement-returns { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:440px) { .retirement-inputs,.retirement-returns { grid-template-columns:1fr; } .retirement-facts strong { font-size:1.1rem; } }
 @media print { .retirement-report .table-wrap { overflow:visible; } .retirement-report table { font-size:9px; } .retirement-report .card { break-inside:auto; } .retirement-report tr { break-inside:avoid; } }
@@ -1189,6 +1193,9 @@ details.year-detail[open] summary { margin-bottom: var(--space-2); }
 .mc-allocation .field { margin:0; min-width:8rem; }
 .mc-allocation input { width:100%; max-width:16rem; }
 .mc-allocation { min-width:34rem; }
+.mc-allocation-total { padding:.75rem 1rem; border-left:3px solid var(--color-border); font-variant-numeric:tabular-nums; }
+.mc-allocation-total[data-state="complete"] { border-color:var(--color-accent); color:var(--color-accent); }
+.mc-allocation-total[data-state="over"], .mc-allocation-total[data-state="invalid"] { border-color:var(--color-danger); }
 .mc-outcomes { min-width:32rem; }
 .mc-frequency { display:block; font:600 1.6rem var(--font-num); margin:.2rem 0; }
 .mc-outcomes td .meta { display:block; }
