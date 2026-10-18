@@ -61,6 +61,11 @@ an archive or web download removes it (`chmod +x run.sh LookThrough.command`).
 Only one installation should listen on port 5001: the Finder launcher reuses an
 already running server at that address. Stop another installation before testing
 or switching to this one.
+The Finder launcher allows up to 60 seconds for startup and prints progress every
+ten seconds. Its local health checks ignore curl configuration and proxy settings.
+If startup fails, it preserves the server output and reports an exit status or the
+last readiness-check error. Run `./run.sh` from the project folder to diagnose
+startup without the Finder launcher's time limit.
 
 ## Local data and recovery
 

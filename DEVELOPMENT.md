@@ -70,6 +70,20 @@ Chrome profiles and synthetic SQLite files, and save synthetic screenshots under
 /tmp. Run the fixture and its browser check in separate terminals, then stop the
 fixture with Control-C. Do not run checks sharing a debug port simultaneously.
 
+Finder-launcher E2E verification:
+
+```sh
+.venv/bin/python tests/launcher_e2e.py
+```
+
+This macOS check copies the application into disposable directories, starts real
+Waitress servers on temporary loopback ports, and records browser-open requests
+instead of opening a browser. It exercises startup exceeding ten seconds, curl
+configuration/proxy interference, repeat launch, early failure, the 60-second
+timeout and shutdown cleanup. It uses no personal databases. The printed temporary
+directory retains fixture copies, launcher logs and `assertions.json`; `--case`
+selects `delayed`, `curl-config`, `failure` or `timeout` for a focused rerun.
+
 Examples:
 
 ```sh

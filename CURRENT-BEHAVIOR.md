@@ -228,3 +228,7 @@ multi-user authentication, public server, background worker, telemetry or cloud 
 Do not infer that local safety checks make the app suitable for external hosting.
 The shell launcher invokes Waitress as a module using the repository-local virtual
 environment's Python, so a stale console-script interpreter path does not block startup.
+The Finder launcher waits up to 60 seconds, with progress messages, and probes
+loopback directly regardless of curl configuration or proxy environment variables.
+Early exits report the server status; timeout reports the readiness-check error
+and stops the attempted server. Direct `./run.sh` startup has no readiness timeout.
